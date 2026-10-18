@@ -109,8 +109,8 @@ class Store:
                 return result
         return None
 
-    def fail(self, job, error, uncertain=False):
-        status = 'uncertain' if uncertain else 'failed' if job['attempts'] >= 5 else 'pending'
+    def fail(self, job, error, uncertain=False, retryable=False):
+        status = 'uncertain' if uncertain else 'failed' if job['attempts'] >= 5 and not retryable else 'pending'
         self.jobs.update_one({'_id': job['_id']}, {'$set': {'status': status,
-            'error': error[:500], 'retry_at': now() + timedelta(seconds=min(3600, 60 * 2 ** job['attempts']))}})
+            'error': error[:500], 'retry_at': now() + timedelta(seconds=min(3600, 60 * 2 ** min(job['attempts'], 6)))}})
         return status

@@ -1,13 +1,12 @@
 import logging
 import re
 import signal
-import tempfile
 import threading
-from pathlib import Path
 
-from .pdf import build_chapter
+from . import spool
 from .preview import from_cached_pages
 from .store import now
+from bson.decimal128 import Decimal128
 from .seo import chapter_caption
 from . import promotions
 from .channel_setup import refresh_navigation
@@ -19,6 +18,8 @@ log = logging.getLogger(__name__)
 class Worker:
     def __init__(self, store, source, telegram, poll_seconds=1800, admin=None, daily_limit=0):
         self.store, self.source, self.telegram = store, source, telegram
+        if hasattr(source, "bind"):
+            source.bind(store)
         self.poll_seconds, self.admin = poll_seconds, admin
         self.daily_limit = daily_limit
         self.stop = threading.Event()
@@ -26,10 +27,33 @@ class Worker:
         self.lease_ok = threading.Event()
         self.lease_ok.set()
 
+    def state(self, **fields):
+        self.store.db.runtime.update_one({'_id': 'worker_state'}, {'$set': {**fields, 'updated': now()}}, upsert=True)
+
+    def metrics(self):
+        import resource, sys
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        self.state(peak_memory_mb=round(rss / (1024 ** 2 if sys.platform == 'darwin' else 1024), 1))
+        try:
+            stats = self.store.db.command('dbStats')
+            self.state(database_bytes=stats.get('dataSize', 0) + stats.get('indexSize', 0))
+        except Exception:
+            pass
+        for sub in self.store.subs.find({'enabled': True}):
+            try:
+                chat = self.telegram.call('getChat', {'chat_id': sub['channel']})
+                count = self.telegram.call('getChatMemberCount', {'chat_id': sub['channel']})
+                self.store.subs.update_one({'_id': sub['_id']}, {'$set': {'telegram_stats': {
+                    'subscribers': count, 'linked_chat_id': chat.get('linked_chat_id'),
+                    'username': chat.get('username'), 'updated': now()}}})
+            except Exception as exc:
+                log.warning('Channel metrics unavailable (%s)', type(exc).__name__)
+
     def heartbeat(self):
         while not self.heartbeat_stop.wait(20):
             try:
                 if self.store.renew():
+                    self.state(heartbeat=now())
                     continue
             except Exception:
                 pass
@@ -46,6 +70,12 @@ class Worker:
                 if not self.lease_ok.is_set():
                     return
                 self.store.sync(sub, title, chapters)
+                # Only source-side failures are re-armed after a successful discovery.
+                # Unknown Telegram deliveries must never be automatically repeated.
+                available = [Decimal128(c.number) for c in chapters]
+                self.store.jobs.update_many({'subscription': sub['_id'], 'status': 'failed',
+                    'error_type': {'$in': ['HTTPError', 'ConnectTimeout', 'ReadTimeout', 'ConnectionError', 'Timeout', 'RetryError', 'SourceError']},
+                    'number': {'$in': available}}, {'$set': {'status': 'pending', 'attempts': 0, 'retry_at': now(), 'error': None}})
                 if hasattr(self.source, 'metadata'):
                     meta = self.source.metadata(sub['url'])
                     if sub.get('main_title_override'):
@@ -64,10 +94,12 @@ class Worker:
 
     def process(self, job):
         sending = False
+        self.state(stage='preparing', job=str(job['_id']), title=job['title'].split(' / ')[0], chapter=str(job['number']), page=0, pages=0, error=None)
+        self.source.progress = lambda page, total: self.state(stage='preparing', page=page, pages=total)
+        self.telegram.progress = lambda sent, total: self.state(upload_sent=sent, upload_total=total)
         sent = list(job.get('sent_parts', []))
         try:
-            with tempfile.TemporaryDirectory(prefix='manhwa-') as folder:
-                paths, stats = build_chapter(self.source, job['chapter_url'], Path(folder))
+            with spool.prepared(self.source, job) as (folder, (paths, stats)):
                 self.store.jobs.update_one({'_id': job['_id']}, {'$set': {'pdf_stats': stats}})
                 meta = (self.store.subs.find_one({'_id': job['subscription']}) or {}).get('metadata') or {'main_title_ru': job['title'].split(' / ')[0]}
                 if not job.get('preview_receipt') and not sent:
@@ -90,19 +122,28 @@ class Worker:
                         raise RuntimeError('Worker stopping before upload')
                     self.store.jobs.update_one({'_id': job['_id']}, {'$set': {'status': 'sending'}})
                     sending = True
+                    self.state(stage='uploading', part=index + 1, parts=len(paths), upload_bytes=path.stat().st_size, upload_sent=0, upload_total=path.stat().st_size)
                     title = job['title']
                     part = f' · Часть {index + 1}/{len(paths)}' if len(paths) > 1 else ''
-                    filename = re.sub(r'[^\w .-]', '_', f"{title} - {job['name']}")[:140]
+                    filename = re.sub(r'[^\w .-]', '_', meta['main_title_ru'])[:100] + ' - Глава ' + str(job['number'])
+                    filename += f' - Часть {index + 1}' if len(paths) > 1 else ''
                     receipt = self.telegram.document(job['channel'], path,
-                        chapter_caption(meta, str(job['number']), part), f'{filename}-{index + 1}.pdf')
+                        chapter_caption(meta, str(job['number']), part), f'{filename}.pdf')
                     sent.append(receipt)
                     self.store.jobs.update_one({'_id': job['_id']}, {'$set': {'sent_parts': sent}})
                     sending = False
                 self.store.jobs.update_one({'_id': job['_id']}, {'$set': {'status': 'sent', 'sent_at': now(), 'error': None}})
+                spool.clean(job)
+                self.state(stage='idle', job=None)
                 log.info('Published job %s (%s PDF pages)', job['_id'], stats['pdf_pages'])
         except Exception as exc:
             uncertain = isinstance(exc, DeliveryUnknown) or (sending and not isinstance(exc, DeliveryRejected))
-            status = self.store.fail(job, type(exc).__name__, uncertain=uncertain)
+            kind = type(exc).__name__
+            detail = str(exc)[:350] if isinstance(exc, (ValueError, RuntimeError)) else kind
+            self.store.jobs.update_one({'_id': job['_id']}, {'$set': {'error_type': kind}})
+            status = self.store.fail(job, detail, uncertain=uncertain,
+                retryable=isinstance(exc, DeliveryRejected) and exc.code in (408, 429))
+            self.state(stage='error', error=detail, job=str(job['_id']))
             if isinstance(exc, DeliveryRejected) and exc.retry_after:
                 from datetime import timedelta
                 self.store.db.runtime.update_one({'_id': 'telegram'}, {'$max': {'not_before': now() + timedelta(seconds=exc.retry_after + 5)}}, upsert=True)
@@ -120,8 +161,14 @@ class Worker:
         beat.start()
         try:
             self.store.recover()
+            self.state(stage='starting', host='local', heartbeat=now())
+            metrics_at = 0
             promotions.recover(self.store)
             while not self.stop.is_set():
+                import time
+                if time.monotonic() - metrics_at > 300:
+                    self.metrics()
+                    metrics_at = time.monotonic()
                 self.discover()
                 if not self.lease_ok.is_set():
                     break

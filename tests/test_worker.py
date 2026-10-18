@@ -15,7 +15,7 @@ def setup(monkeypatch, tmp_path):
     store.sync(store.subs.find_one(), 'Test', [Chapter('chapter', 'Глава 1', '1', '1')])
     job = store.claim()
     path = tmp_path / 'test.pdf'; path.write_bytes(b'pdf')
-    monkeypatch.setattr('manhwa.worker.build_chapter', lambda *a: ([path], {'pdf_pages': 1}))
+    monkeypatch.setattr('manhwa.spool.build_chapter', lambda *a: ([path], {'pdf_pages': 1}))
     monkeypatch.setattr('manhwa.worker.from_cached_pages', lambda *a: path)
     telegram = Mock()
     telegram.photo.return_value = {'message_id': 122}
@@ -66,3 +66,36 @@ def test_preview_is_not_repeated_on_pdf_retry(monkeypatch, tmp_path):
     worker.process(saved)
     assert telegram.photo.call_count == 1
     assert store.jobs.find_one()['status'] == 'sent'
+
+
+def test_source_recovery_rearms_failures_but_not_unknown_deliveries(monkeypatch):
+    from bson.decimal128 import Decimal128
+    import mongomock.filtering
+    original = mongomock.filtering.bson_compare
+    def compare(op, a, b, can_compare_types=True):
+        if isinstance(a, Decimal128): a = a.to_decimal()
+        if isinstance(b, Decimal128): b = b.to_decimal()
+        return original(op, a, b, can_compare_types)
+    monkeypatch.setattr(mongomock.filtering, "bson_compare", compare)
+    from types import SimpleNamespace
+    store=Store(mongomock.MongoClient().db)
+    store.add('url','channel','archive','1');sub=store.subs.find_one()
+    chapters=[Chapter('one','Глава 1','1','1'),Chapter('two','Глава 2','1','2')]
+    store.sync(sub,'title',chapters)
+    store.jobs.update_one({'chapter_url':'one'},{'$set':{'status':'uncertain','error_type':'DeliveryUnknown'}})
+    store.jobs.update_one({'chapter_url':'two'},{'$set':{'status':'failed','error_type':'HTTPError','attempts':5}})
+    store.subs.update_one({'_id':sub['_id']},{'$unset':{'checked':''}})
+    worker=Worker(store,SimpleNamespace(chapters=lambda url:('title',chapters)),Mock())
+    worker.discover()
+    assert store.jobs.find_one({'chapter_url':'one'})['status']=='uncertain'
+    assert store.jobs.find_one({'chapter_url':'two'})['status']=='pending'
+    assert store.claim() is None
+
+
+def test_explicit_rate_limit_stays_retryable_after_five_attempts(monkeypatch,tmp_path):
+    store,job,telegram,worker=setup(monkeypatch,tmp_path)
+    job['attempts']=10
+    telegram.document.side_effect=DeliveryRejected(429,retry_after=120)
+    worker.process(job)
+    assert store.jobs.find_one()['status']=='pending'
+    assert store.jobs.find_one()['preview_receipt']['message_id']==122

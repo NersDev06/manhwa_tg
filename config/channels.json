@@ -5,7 +5,9 @@
     "channel": "-1004454922382",
     "mode": "archive",
     "start": "0",
-    "public_url": "https://t.me/rytsar_odin_i_tot_zhe_den"
+    "public_url": "https://t.me/rytsar_odin_i_tot_zhe_den",
+    "discussion_group_id": -1004497113051,
+    "fallback_url": "https://wamanga.ru/manhwa/rycar-prozhivayushchiy-odin-i-tot-zhe-den"
   },
   {
     "title": "Регрессор падшего дома",
@@ -13,7 +15,9 @@
     "channel": "-1004395019335",
     "mode": "archive",
     "start": "1",
-    "public_url": "https://t.me/regressor_padshego_doma_pdf"
+    "public_url": "https://t.me/regressor_padshego_doma_pdf",
+    "discussion_group_id": -1004307996195,
+    "fallback_url": "https://wamanga.ru/manhwa/regressor-padshego-doma"
   },
   {
     "title": "Одиночное фермерство в башне",
@@ -21,7 +25,9 @@
     "channel": "-1004432865265",
     "mode": "archive",
     "start": "1",
-    "public_url": "https://t.me/odinochnoe_fermerstvo_v_b_manhwa"
+    "public_url": "https://t.me/odinochnoe_fermerstvo_v_b_manhwa",
+    "discussion_group_id": -1004367223099,
+    "fallback_url": "https://wamanga.ru/manhwa/fermerstvo-v-basne-v-odinochku"
   },
   {
     "title": "Выживание в игре в роли варвара",
@@ -29,7 +35,9 @@
     "channel": "-1003919988760",
     "mode": "archive",
     "start": "1",
-    "public_url": "https://t.me/vyzhivanie_v_igre_v_roli_manhwa"
+    "public_url": "https://t.me/vyzhivanie_v_igre_v_roli_manhwa",
+    "discussion_group_id": -1004368165021,
+    "fallback_url": "https://wamanga.ru/manhwa/vyzhivaya-v-igre-za-varvara"
   },
   {
     "title": "Выбери меня!",
@@ -37,7 +45,9 @@
     "channel": "-1004461718248",
     "mode": "archive",
     "start": "1",
-    "public_url": "https://t.me/vyberi_menya_manhwa"
+    "public_url": "https://t.me/vyberi_menya_manhwa",
+    "discussion_group_id": -1003923235774,
+    "fallback_url": "https://wamanga.ru/manhwa/vyberi-menya"
   },
   {
     "title": "Убийца Петер",
@@ -45,7 +55,11 @@
     "channel": "-1004446755930",
     "mode": "archive",
     "start": "1",
-    "public_url": "https://t.me/ubiytsa_peter_manhwa"
+    "public_url": "https://t.me/ubiytsa_peter_manhwa",
+    "discussion_group_id": -1004492171509,
+    "fallback_url": "https://wamanga.ru/manhwa/ubiyca-piter",
+    "reader_url": "https://mangabuff.ru/manga/killer-pedro",
+    "reader_volume": "1"
   },
   {
     "title": "Слёзы на увядшем цветке",
@@ -53,7 +67,9 @@
     "channel": "-1003923122008",
     "mode": "archive",
     "start": "1",
-    "public_url": "https://t.me/slyozy_na_uvyadshem_tsvet_manhwa"
+    "public_url": "https://t.me/slyozy_na_uvyadshem_tsvet_manhwa",
+    "fallback_url": "https://wamanga.ru/manhwa/slezy-na-uvyadshih-cvetah",
+    "discussion_group_id": -1004410920599
   },
   {
     "title": "Лукизм",
@@ -61,6 +77,8 @@
     "channel": "-1003994285707",
     "mode": "archive",
     "start": "1",
-    "public_url": "https://t.me/lukizm_manhwa"
+    "public_url": "https://t.me/lukizm_manhwa",
+    "fallback_url": "https://wamanga.ru/manhwa/lukizm",
+    "discussion_group_id": -1004395060469
   }
 ]

@@ -18,7 +18,8 @@ def crop_preview(raw, target):
     for y in range(height):
         row = small.crop((0, y, width, y + 1))
         stat = ImageStat.Stat(row)
-        rows.append(min(stat.mean) > 244 and max(stat.stddev) < 14)
+        rows.append((min(stat.mean) > 244 and max(stat.stddev) < 14) or
+                    (max(stat.mean) < 18 and max(stat.stddev) < 10))
     spans, start = [], None
     for y, blank in enumerate(rows + [True]):
         if not blank and start is None:
@@ -29,17 +30,21 @@ def crop_preview(raw, target):
             start = None
     # Prefer a substantial panel near the page centre; fallback is a central square.
     centre = height / 2
+    spans = [span for span in spans if span[1] - span[0] >= max(35, width * 0.5)] or spans
     a, b = min(spans, key=lambda span: abs((span[0] + span[1]) / 2 - centre)) if spans else (0, height)
     scale = image.height / height
     top, bottom = int(a * scale), int(b * scale)
-    side = min(image.width, bottom - top)
-    cy = (top + bottom) // 2
-    # Retain the full panel width where possible, never deliberately remove attribution.
-    panel = image.crop((0, max(top, cy-side//2), image.width, min(bottom, cy+(side+1)//2)))
+    # Keep the selected panel intact; crop margins, never zoom into a square.
+    panel = image.crop((0, top, image.width, bottom))
     ink = ImageChops.difference(panel, Image.new('RGB', panel.size, 'white')).convert('L').point(lambda value: 255 if value > 20 else 0).getbbox()
     if ink:
         panel = panel.crop(ink)
-    panel.thumbnail((1000, 1000))
+    # Telegram photos accept at most 20:1; padding preserves unusually tall panels.
+    if panel.height > panel.width * 20:
+        canvas = Image.new('RGB', ((panel.height + 19) // 20, panel.height), 'white')
+        canvas.paste(panel, ((canvas.width - panel.width) // 2, 0))
+        panel = canvas
+    panel.thumbnail((1000, 1800))
     panel.save(target, 'JPEG', quality=92)
     return Path(target)
 

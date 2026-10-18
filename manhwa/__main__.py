@@ -11,7 +11,7 @@ from pymongo import MongoClient
 import certifi
 from bson import ObjectId
 
-from .source import MangaShi
+from .fallback import ResilientSource as MangaShi
 from .store import Store, now
 from .telegram import Telegram
 

@@ -6,3 +6,4 @@ Pillow>=11,<14
 img2pdf>=0.6,<0.7
 python-dotenv>=1,<2
 certifi>=2025
+httpx>=0.28,<0.29

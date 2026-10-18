@@ -3,8 +3,9 @@ import sys
 from pathlib import Path
 
 import img2pdf
+from PIL import Image
 
-MAX_PDF_BYTES = 45_000_000
+MAX_PDF_BYTES = 49_000_000
 
 
 def build_chapter(source, chapter_url, folder: Path):
@@ -21,9 +22,18 @@ def build_chapter(source, chapter_url, folder: Path):
                 if size > 30_000_000:
                     raise ValueError('Source image exceeds 30 MB')
                 out.write(chunk)
+        with Image.open(raw) as image:
+            if image.width < 320 and image.height > 1000:
+                raise ValueError('Reader supplied a low-resolution long strip; refusing unreadable PDF')
         prefix = f'page-{index:05d}'
-        subprocess.run([sys.executable, '-m', 'manhwa.images', str(raw), str(folder), prefix],
-                       check=True, capture_output=True, timeout=120)
+        result = subprocess.run([sys.executable, '-m', 'manhwa.images', str(raw), str(folder), prefix],
+                       capture_output=True, timeout=120)
+        if result.returncode:
+            # Only the final exception line; no image URLs or response bodies.
+            reason = result.stderr.decode('utf-8', errors='replace').strip().splitlines()[-1:]
+            raise RuntimeError('Image conversion: ' + (' '.join(reason))[:250])
+        if callable(getattr(source, 'progress', None)):
+            source.progress(index + 1, len(pages))
         tiles.extend(sorted(folder.glob(prefix + '-*.jpg')))
         raw.unlink()
     outputs = []
@@ -44,7 +54,7 @@ def build_chapter(source, chapter_url, folder: Path):
 
     group, size = [], 0
     for tile in tiles:
-        if group and size + tile.stat().st_size > 38_000_000:
+        if group and size + tile.stat().st_size > 45_000_000:
             write_group(group)
             group, size = [], 0
         group.append(tile)

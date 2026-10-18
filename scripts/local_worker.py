@@ -7,13 +7,14 @@ from pathlib import Path
 import plistlib
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 LABEL = 'local.manhwa-telegram.worker'
 DOMAIN = f'gui/{os.getuid()}'
 TARGET = DOMAIN + '/' + LABEL
 RUNTIME = ROOT / 'tmp' / 'local-worker'
-PLIST = RUNTIME / 'worker.plist'
+PLIST = Path.home() / 'Library' / 'LaunchAgents' / (LABEL + '.plist')
 
 
 def run(*args):
@@ -26,6 +27,7 @@ def main():
         if run('print', TARGET).returncode == 0:
             print('Local worker already loaded'); return
         RUNTIME.mkdir(parents=True, exist_ok=True)
+        PLIST.parent.mkdir(parents=True, exist_ok=True)
         python = ROOT / '.venv' / 'bin' / 'python'
         if not python.exists():
             raise RuntimeError('Project virtual environment is missing')
@@ -46,7 +48,14 @@ def main():
         result = run('bootout', TARGET)
         if result.returncode and run('print', TARGET).returncode == 0:
             raise RuntimeError('Unable to stop local worker')
-        print('Local worker stopped')
+        PLIST.unlink(missing_ok=True)
+        # bootout can return before an in-flight worker has actually exited.
+        for _ in range(40):
+            if run('print', TARGET).returncode != 0:
+                print('Local worker stopped')
+                return
+            time.sleep(0.5)
+        print('Local worker is still stopping; check status before starting again')
     elif action == 'status':
         result = run('print', TARGET)
         if result.returncode:
