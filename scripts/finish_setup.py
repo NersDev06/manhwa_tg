@@ -6,6 +6,7 @@ import sys
 
 from dotenv import dotenv_values
 from pymongo import MongoClient
+import certifi
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = 'manhwa-publisher-20261018'
@@ -24,7 +25,7 @@ def main():
     uri = env.get('MONGODB_URI')
     if not uri:
         raise ValueError('Owner must save MONGODB_URI in .env first')
-    with MongoClient(uri, serverSelectionTimeoutMS=15000) as client:
+    with MongoClient(uri, serverSelectionTimeoutMS=15000, tlsCAFile=certifi.where()) as client:
         client.admin.command('ping')
     print('MongoDB connection verified')
     run(['heroku', 'ps:scale', 'worker=0', '--app', APP])

@@ -8,6 +8,7 @@ import tempfile
 
 from dotenv import load_dotenv
 from pymongo import MongoClient
+import certifi
 from bson import ObjectId
 
 from .source import MangaShi
@@ -19,7 +20,7 @@ def database():
     uri = os.environ.get('MONGODB_URI')
     if not uri:
         raise ValueError('Set MONGODB_URI in .env or Heroku Config Vars')
-    client = MongoClient(uri, serverSelectionTimeoutMS=15000, maxPoolSize=5, tz_aware=True)
+    client = MongoClient(uri, serverSelectionTimeoutMS=15000, maxPoolSize=5, tz_aware=True, tlsCAFile=certifi.where())
     client.admin.command('ping')
     store = Store(client[os.environ.get('MONGODB_DATABASE', 'manhwa_telegram')])
     store.indexes()
