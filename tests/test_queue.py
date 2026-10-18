@@ -98,3 +98,14 @@ def test_second_channel_has_independent_daily_quota(store):
     assert first['channel'] != second['channel']
     store.jobs.update_one({'_id': second['_id']}, {'$set': {'status': 'sent'}})
     assert store.claim(daily_limit=1) is None
+
+
+def test_zero_limit_allows_more_than_ten(store):
+    s = store
+    s.add('url', '@unlimited', 'archive', '1')
+    s.sync(s.subs.find_one(), 'Test', [Chapter(f'c{n}', f'Глава {n}', '1', str(n)) for n in range(1, 13)])
+    for _ in range(12):
+        job = s.claim(0)
+        assert job is not None
+        s.jobs.update_one({'_id': job['_id']}, {'$set': {'status': 'sent'}})
+    assert s.claim(0) is None

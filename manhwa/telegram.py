@@ -1,3 +1,4 @@
+import json
 import requests
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 
@@ -22,6 +23,7 @@ class Telegram:
         # Streaming upload avoids requests' default in-memory multipart encoding.
         with path.open('rb') as stream:
             encoder = MultipartEncoder(fields={'chat_id': str(channel), 'caption': caption[:1024],
+                'parse_mode': 'HTML', 'protect_content': 'true',
                 'document': (filename, stream, 'application/pdf')})
             try:
                 response = requests.post(self.base + '/sendDocument', data=encoder,
@@ -66,3 +68,57 @@ class Telegram:
             requests.post(self.base + '/sendMessage', data={'chat_id': chat_id, 'text': text[:3500]}, timeout=20)
         except requests.RequestException:
             pass
+
+    def call(self, method, payload):
+        try:
+            response = requests.post(self.base + '/' + method, json=payload, timeout=(20, 90))
+            data = response.json()
+        except (requests.RequestException, ValueError):
+            raise DeliveryUnknown('Telegram response unavailable; check before retrying') from None
+        if not data.get('ok'):
+            code = data.get('error_code', response.status_code)
+            if method.startswith('editMessage') and code == 400 and 'message is not modified' in data.get('description', '').lower():
+                return True
+            if code >= 500:
+                raise DeliveryUnknown('Telegram server error; check before retrying')
+            raise DeliveryRejected(code, data.get('parameters', {}).get('retry_after', 0))
+        return data['result']
+
+    def message(self, channel, text, buttons=None):
+        payload = {'chat_id': channel, 'text': text, 'parse_mode': 'HTML',
+            'protect_content': True, 'disable_notification': True,
+            'link_preview_options': {'is_disabled': True}}
+        if buttons:
+            payload['reply_markup'] = {'inline_keyboard': buttons}
+        return self.call('sendMessage', payload)
+
+    def photo(self, channel, path, caption):
+        with path.open('rb') as stream:
+            encoder = MultipartEncoder(fields={'chat_id': str(channel), 'caption': caption,
+                'protect_content': 'true', 'disable_notification': 'true',
+                'photo': (path.name, stream, 'image/jpeg')})
+            try:
+                response = requests.post(self.base + '/sendPhoto', data=encoder,
+                    headers={'Content-Type': encoder.content_type}, timeout=(20, 120))
+                data = response.json()
+            except (requests.RequestException, ValueError):
+                raise DeliveryUnknown('Preview delivery requires checking') from None
+        if not data.get('ok'):
+            code = data.get('error_code', response.status_code)
+            if code >= 500:
+                raise DeliveryUnknown('Preview delivery requires checking')
+            raise DeliveryRejected(code, data.get('parameters', {}).get('retry_after', 0))
+        return data['result']
+
+    def set_photo(self, channel, path):
+        with path.open('rb') as stream:
+            encoder = MultipartEncoder(fields={'chat_id': str(channel), 'photo': (path.name, stream, 'image/jpeg')})
+            try:
+                response = requests.post(self.base + '/setChatPhoto', data=encoder,
+                    headers={'Content-Type': encoder.content_type}, timeout=(20, 90))
+                data = response.json()
+            except (requests.RequestException, ValueError):
+                raise DeliveryUnknown('Channel photo result unavailable') from None
+        if not data.get('ok'):
+            raise DeliveryRejected(data.get('error_code', response.status_code))
+        return data['result']

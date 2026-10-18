@@ -8,3 +8,6 @@ research/
 tmp/
 output/
 *.egg-info/
+
+*.session
+*.session-journal

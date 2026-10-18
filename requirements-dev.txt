@@ -2,3 +2,5 @@
 pytest>=8,<10
 mongomock>=4.3,<5
 pypdf>=5,<7
+
+-r requirements-owner.txt

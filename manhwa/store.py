@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from bson.decimal128 import Decimal128
 from pymongo import ASCENDING, ReturnDocument
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, BulkWriteError
 
 
 def now():
@@ -24,6 +24,7 @@ class Store:
         self.subs.create_index([('url', ASCENDING), ('channel', ASCENDING)], unique=True)
         self.jobs.create_index([('subscription', 1), ('chapter_url', 1)], unique=True)
         self.jobs.create_index([('subscription', 1), ('volume', 1), ('number', 1)])
+        self.db.outbox.create_index([('kind', 1), ('status', 1), ('created', 1)])
 
     def acquire(self):
         try:
@@ -60,18 +61,27 @@ class Store:
 
     def sync(self, sub, title, chapters):
         baseline = not sub['initialized'] and sub['mode'] == 'new'
+        existing = {j['chapter_url'] for j in self.jobs.find({'subscription': sub['_id']}, {'chapter_url': 1})}
+        additions = []
         for chapter in chapters:
-            if sub['start'] is not None and Decimal(chapter.number) < Decimal(sub['start']):
+            if chapter.url in existing or (sub['start'] is not None and Decimal(chapter.number) < Decimal(sub['start'])):
                 continue
-            self.jobs.update_one({'subscription': sub['_id'], 'chapter_url': chapter.url},
-                {'$setOnInsert': {'title': title, 'name': chapter.name,
-                    'volume': int(chapter.volume), 'number': Decimal128(chapter.number),
-                    'channel': sub['channel'], 'status': 'baseline' if baseline else 'pending',
-                    'attempts': 0, 'sent_parts': [], 'created': now()}}, upsert=True)
+            existing.add(chapter.url)
+            additions.append({'subscription': sub['_id'], 'chapter_url': chapter.url,
+                'title': title, 'name': chapter.name, 'volume': int(chapter.volume),
+                'number': Decimal128(chapter.number), 'channel': sub['channel'],
+                'status': 'baseline' if baseline else 'pending',
+                'attempts': 0, 'sent_parts': [], 'created': now()})
+        if additions:
+            try:
+                self.jobs.insert_many(additions, ordered=False)
+            except BulkWriteError as exc:
+                if exc.details.get('writeConcernErrors') or any(e['code'] != 11000 for e in exc.details.get('writeErrors', [])):
+                    raise
         self.subs.update_one({'_id': sub['_id']}, {'$set': {
             'initialized': True, 'title': title, 'checked': now(), 'error': None}})
 
-    def claim(self, daily_limit=10):
+    def claim(self, daily_limit=0):
         day = now().astimezone(ZoneInfo("Asia/Bishkek")).date().isoformat()
         # An unresolved earlier chapter blocks later chapters of the same title.
         for sub in self.subs.find({'enabled': True}).sort('last_processed', 1):
@@ -82,7 +92,7 @@ class Store:
             due = job.get('retry_at')
             if due and due.replace(tzinfo=timezone.utc) > now():
                 continue
-            if job.get('quota_day') != day:
+            if daily_limit > 0 and job.get('quota_day') != day:
                 quota_key = day + ':' + sub['channel']
                 self.db.daily_quota.update_one({'_id': quota_key}, {'$setOnInsert': {'count': 0}}, upsert=True)
                 reserved = self.db.daily_quota.find_one_and_update(

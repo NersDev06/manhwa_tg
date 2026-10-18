@@ -120,3 +120,31 @@ class MangaShi:
         if not pages or any(urlparse(p).scheme != 'https' for p in pages):
             raise SourceError('Missing reader images')
         return pages
+
+    def metadata(self, url):
+        with self.get(self.title_url(url)) as response:
+            return self.parse_metadata(response.text, url)
+
+    @staticmethod
+    def parse_metadata(html, url):
+        soup = BeautifulSoup(html, 'html.parser')
+        heading = soup.select_one('h1')
+        if heading is None:
+            raise SourceError('Title metadata missing')
+        names = [n.strip() for n in heading.get_text(' ', strip=True).split(' / ') if n.strip()]
+        aliases = []
+        label = soup.find(string=re.compile(r'^\s*Другие названия:\s*$'))
+        if label and label.parent.find_next_sibling():
+            aliases = [n.strip() for n in label.parent.find_next_sibling().get_text(' ', strip=True).split(',') if n.strip()]
+        names = list(dict.fromkeys(names + aliases))
+        ru = [n for n in names if re.search('[а-яА-ЯёЁ]', n)]
+        other = [n for n in names if n not in ru]
+        image = soup.select_one('meta[property="og:image"]')
+        cover = urljoin(url, image.get('content', '')) if image else None
+        if cover and urlparse(cover).scheme != 'https':
+            cover = None
+        status = soup.find(string=re.compile(r'•\s*Оригинал'))
+        return {'main_title_ru': ru[0] if ru else names[0],
+            'alt_titles_ru': ru[1:], 'title_en': next((n for n in other if re.search('[A-Za-z]', n)), other[0] if other else ''),
+            'alt_titles_other': other, 'cover_url': cover,
+            'status': status.strip('• \n') if status else None, 'source_url': url}

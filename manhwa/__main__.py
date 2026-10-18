@@ -41,6 +41,8 @@ def main():
     add.add_argument('--start', help='Required for archive; inclusive chapter number across volumes')
     commands.add_parser('status'); commands.add_parser('worker')
     commands.add_parser('init-db')
+    setup_cmd = commands.add_parser('setup-channel'); setup_cmd.add_argument('subscription')
+    test_preview = commands.add_parser('test-preview'); test_preview.add_argument('chapter_url'); test_preview.add_argument('--channel', default='-1004333325914')
     configure = commands.add_parser('configure')
     configure.add_argument('--file', default='config/channels.json')
     for name in ['pause', 'resume']:
@@ -74,7 +76,19 @@ def main():
     if args.command == 'check-channel':
         print(Telegram(os.environ.get('TELEGRAM_BOT_TOKEN')).check_channel(args.channel)); return
     store = database()
-    if args.command == 'init-db':
+    if args.command == 'test-preview':
+        from .preview import build_preview
+        with tempfile.TemporaryDirectory() as folder:
+            path = build_preview(source, args.chapter_url, folder)
+            result = Telegram(os.environ.get('TELEGRAM_BOT_TOKEN')).photo(args.channel, path, 'Тест превью: фрагмент из середины главы, белые края обрезаны.')
+            print('Preview message:', result['message_id'])
+    elif args.command == 'setup-channel':
+        from .channel_setup import setup_channel
+        sub = store.subs.find_one({'_id': args.subscription})
+        if sub is None:
+            raise ValueError('Subscription not found')
+        print('Navigator:', setup_channel(store, source, Telegram(os.environ.get('TELEGRAM_BOT_TOKEN')), sub))
+    elif args.command == 'init-db':
         print('MongoDB connected; indexes ready')
     elif args.command == 'configure':
         from pymongo.errors import DuplicateKeyError
@@ -92,6 +106,7 @@ def main():
                 key = store.add(url, item['channel'], item['mode'], item['start'])
             except DuplicateKeyError:
                 key = store.subs.find_one({'url': url, 'channel': item['channel']})['_id']
+            store.subs.update_one({'_id': key}, {'$set': {'public_url': item.get('public_url'), 'main_title_override': item['title']}})
             sub = store.subs.find_one({'_id': key})
             title, chapters = source.chapters(url)
             store.sync(sub, title, chapters)
@@ -130,7 +145,7 @@ def main():
         from .worker import Worker
         Worker(store, source, Telegram(os.environ.get('TELEGRAM_BOT_TOKEN')),
                max(60, int(os.environ.get('POLL_SECONDS', '1800'))), os.environ.get('ADMIN_CHAT_ID'),
-               max(1, int(os.environ.get('DAILY_CHAPTER_LIMIT', '10')))).run()
+               max(0, int(os.environ.get('DAILY_CHAPTER_LIMIT', '0')))).run()
 
 
 if __name__ == '__main__':

@@ -7,3 +7,6 @@ tests/
 .env
 .env.*
 RESEARCH.md
+
+*.session
+*.session-journal
