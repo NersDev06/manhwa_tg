@@ -17,3 +17,9 @@ def test_metadata_from_actual_markup():
     assert meta['main_title_ru'] == 'Название'
     assert meta['alt_titles_ru'] == ['Синоним']
     assert meta['cover_url'] == 'https://manga-shi.org/cover.jpg'
+
+
+def test_slash_separated_alternative_titles():
+    meta = MangaShi.parse_metadata('<h1>Регрессор падшего дома</h1><div><span>Другие названия:</span><span>Regressor of the Fallen Family / Регрессор из Падшей Семьи / 멸망한 가문의 회귀자</span></div>', 'https://manga-shi.org/manga/test/')
+    assert meta['title_en'] == 'Regressor of the Fallen Family'
+    assert meta['alt_titles_ru'] == ['Регрессор из Падшей Семьи']

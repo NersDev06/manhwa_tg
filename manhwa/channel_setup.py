@@ -65,7 +65,7 @@ def setup_channel(store, source, telegram, sub):
     telegram.call('pinChatMessage', {'chat_id': channel, 'message_id': item['message_id'], 'disable_notification': True})
     # Refresh the direct first-chapter link on reruns without making another post.
     telegram.call('editMessageText', {'chat_id': channel, 'message_id': item['message_id'],
-        'text': navigator(meta, first_url), 'parse_mode': 'HTML', 'link_preview_options': {'is_disabled': True}}) if item.get('first_url') != first_url else None
+        'text': navigator(meta, first_url), 'parse_mode': 'HTML', 'link_preview_options': {'is_disabled': True}})
     store.db.outbox.update_one({'_id': key}, {'$set': {'first_url': first_url, 'pinned': True}})
     return item['message_id']
 

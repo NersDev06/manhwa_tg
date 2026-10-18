@@ -135,7 +135,7 @@ class MangaShi:
         aliases = []
         label = soup.find(string=re.compile(r'^\s*Другие названия:\s*$'))
         if label and label.parent.find_next_sibling():
-            aliases = [n.strip() for n in label.parent.find_next_sibling().get_text(' ', strip=True).split(',') if n.strip()]
+            aliases = [n.strip() for n in re.split(r',\s*|\s+/\s+', label.parent.find_next_sibling().get_text(' ', strip=True)) if n.strip()]
         names = list(dict.fromkeys(names + aliases))
         ru = [n for n in names if re.search('[а-яА-ЯёЁ]', n)]
         other = [n for n in names if n not in ru]
