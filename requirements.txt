@@ -1,0 +1,8 @@
+requests>=2.32,<3
+requests-toolbelt>=1.0,<2
+beautifulsoup4>=4.13,<5
+pymongo[srv]>=4.11,<5
+Pillow>=11,<14
+img2pdf>=0.6,<0.7
+python-dotenv>=1,<2
+certifi>=2025
