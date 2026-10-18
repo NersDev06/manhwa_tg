@@ -7,113 +7,146 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const d = await db();
-    const [subscriptions, counts, worker, lease, recent, issues, hours] =
-      await Promise.all([
-        d
-          .collection("subscriptions")
-          .find(
-            {},
-            {
-              projection: {
-                metadata: 1,
-                title: 1,
-                main_title_override: 1,
-                channel: 1,
-                enabled: 1,
-                checked: 1,
-                error: 1,
-                active_source: 1,
-                fallback_missing: 1,
-                telegram_stats: 1,
-                public_url: 1,
-              },
+    const [
+      subscriptions,
+      counts,
+      worker,
+      lease,
+      recent,
+      issues,
+      hours,
+      events,
+      control,
+    ] = await Promise.all([
+      d
+        .collection("subscriptions")
+        .find(
+          {},
+          {
+            projection: {
+              metadata: 1,
+              title: 1,
+              main_title_override: 1,
+              channel: 1,
+              enabled: 1,
+              checked: 1,
+              error: 1,
+              active_source: 1,
+              source_health: 1,
+              available_sources: 1,
+              fallback_missing: 1,
+              telegram_stats: 1,
+              public_url: 1,
             },
-          )
-          .toArray(),
-        d
-          .collection("jobs")
-          .aggregate([
-            {
-              $group: {
-                _id: { subscription: "$subscription", status: "$status" },
-                count: { $sum: 1 },
-                latest: { $max: "$sent_at" },
-              },
+          },
+        )
+        .toArray(),
+      d
+        .collection("jobs")
+        .aggregate([
+          {
+            $group: {
+              _id: { subscription: "$subscription", status: "$status" },
+              count: { $sum: 1 },
+              latest: { $max: "$sent_at" },
             },
-          ])
-          .toArray(),
-        d.collection("runtime").findOne({ _id: "worker_state" as never }),
-        d
-          .collection("locks")
-          .findOne({ _id: "worker" as never }, { projection: { expires: 1 } }),
-        d
-          .collection("jobs")
-          .find(
-            { status: "sent" },
-            {
-              projection: {
-                subscription: 1,
-                name: 1,
-                number: 1,
-                sent_at: 1,
-                sent_parts: 1,
-                pdf_stats: 1,
-              },
+          },
+        ])
+        .toArray(),
+      d.collection("runtime").findOne({ _id: "worker_state" as never }),
+      d
+        .collection("locks")
+        .findOne({ _id: "worker" as never }, { projection: { expires: 1 } }),
+      d
+        .collection("jobs")
+        .find(
+          { status: "sent" },
+          {
+            projection: {
+              subscription: 1,
+              name: 1,
+              number: 1,
+              sent_at: 1,
+              sent_parts: 1,
+              pdf_stats: 1,
             },
-          )
-          .sort({ sent_at: -1 })
-          .limit(20)
-          .toArray(),
-        d
-          .collection("jobs")
-          .find(
-            {
-              status: { $in: ["failed", "uncertain", "processing", "sending"] },
+          },
+        )
+        .sort({ sent_at: -1 })
+        .limit(20)
+        .toArray(),
+      d
+        .collection("jobs")
+        .find(
+          {
+            status: { $in: ["failed", "uncertain", "processing", "sending"] },
+          },
+          {
+            projection: {
+              subscription: 1,
+              name: 1,
+              number: 1,
+              status: 1,
+              error: 1,
+              attempts: 1,
+              preview_receipt: 1,
+              delivery_phase: 1,
+              started: 1,
             },
-            {
-              projection: {
-                subscription: 1,
-                name: 1,
-                number: 1,
-                status: 1,
-                error: 1,
-                attempts: 1,
-                preview_receipt: 1,
-                delivery_phase: 1,
-                started: 1,
-              },
+          },
+        )
+        .sort({ started: -1 })
+        .limit(100)
+        .toArray(),
+      d
+        .collection("jobs")
+        .aggregate([
+          {
+            $match: {
+              status: "sent",
+              sent_at: { $gte: new Date(Date.now() - 24 * 3600000) },
             },
-          )
-          .sort({ started: -1 })
-          .limit(100)
-          .toArray(),
-        d
-          .collection("jobs")
-          .aggregate([
-            {
-              $match: {
-                status: "sent",
-                sent_at: { $gte: new Date(Date.now() - 24 * 3600000) },
-              },
-            },
-            {
-              $group: {
-                _id: {
-                  $dateToString: {
-                    date: "$sent_at",
-                    format: "%Y-%m-%dT%H:00:00Z",
-                  },
+          },
+          {
+            $group: {
+              _id: {
+                $dateToString: {
+                  date: "$sent_at",
+                  format: "%Y-%m-%dT%H:00:00Z",
                 },
-                count: { $sum: 1 },
               },
+              count: { $sum: 1 },
             },
-            { $sort: { _id: 1 } },
-          ])
-          .toArray(),
-      ]);
+          },
+          { $sort: { _id: 1 } },
+        ])
+        .toArray(),
+      d
+        .collection("events")
+        .find(
+          {},
+          {
+            projection: {
+              at: 1,
+              kind: 1,
+              subscription: 1,
+              number: 1,
+              source: 1,
+              error_type: 1,
+              actor: 1,
+            },
+          },
+        )
+        .sort({ at: -1 })
+        .limit(60)
+        .toArray(),
+      d.collection("runtime").findOne({ _id: "publisher_control" as never }),
+    ]);
     return NextResponse.json(
       {
         at: new Date(),
+        paused: control?.paused === true,
+        events: events.map((e) => ({ ...e, _id: String(e._id) })),
         online: !!lease?.expires && lease.expires > new Date(),
         worker: worker
           ? {
@@ -146,6 +179,8 @@ export async function GET() {
           error: s.error,
           source: s.active_source || "MangaShi",
           fallback_missing: s.fallback_missing || [],
+          source_health: s.source_health || {},
+          available_sources: s.available_sources || [],
           stats: s.telegram_stats || null,
           counts: Object.fromEntries(
             counts

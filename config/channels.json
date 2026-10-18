@@ -7,7 +7,29 @@
     "start": "0",
     "public_url": "https://t.me/rytsar_odin_i_tot_zhe_den",
     "discussion_group_id": -1004497113051,
-    "fallback_url": "https://wamanga.ru/manhwa/rycar-prozhivayushchiy-odin-i-tot-zhe-den"
+    "fallback_url": "https://wamanga.ru/manhwa/rycar-prozhivayushchiy-odin-i-tot-zhe-den",
+    "canonical_volume": 0,
+    "sources": [
+      {
+        "kind": "mangashi",
+        "url": "https://manga-shi.org/manga/a-knight-who-lives-for-one-day/"
+      },
+      {
+        "kind": "wamanga",
+        "url": "https://wamanga.ru/manhwa/rycar-prozhivayushchiy-odin-i-tot-zhe-den"
+      },
+      {
+        "kind": "mangabuff",
+        "url": "https://mangabuff.ru/manga/rycar-zhivushchii-odnim-dnem"
+      },
+      {
+        "kind": "remanga",
+        "url": "https://remanga.org/manga/articles-that-live-only-for-today",
+        "directory": "articles-that-live-only-for-today",
+        "title_id": 120159,
+        "branch_id": 99661
+      }
+    ]
   },
   {
     "title": "Регрессор падшего дома",
@@ -17,7 +39,29 @@
     "start": "1",
     "public_url": "https://t.me/regressor_padshego_doma_pdf",
     "discussion_group_id": -1004307996195,
-    "fallback_url": "https://wamanga.ru/manhwa/regressor-padshego-doma"
+    "fallback_url": "https://wamanga.ru/manhwa/regressor-padshego-doma",
+    "canonical_volume": 1,
+    "sources": [
+      {
+        "kind": "mangashi",
+        "url": "https://manga-shi.org/manga/regressor-padshego-doma/"
+      },
+      {
+        "kind": "wamanga",
+        "url": "https://wamanga.ru/manhwa/regressor-padshego-doma"
+      },
+      {
+        "kind": "mangabuff",
+        "url": "https://mangabuff.ru/manga/regressor-iz-razrushennoi-semi"
+      },
+      {
+        "kind": "remanga",
+        "url": "https://remanga.org/manga/<29.04.2026>a-returnee-from-a-fallen-family_",
+        "directory": "<29.04.2026>a-returnee-from-a-fallen-family_",
+        "title_id": 86965,
+        "branch_id": 66482
+      }
+    ]
   },
   {
     "title": "Одиночное фермерство в башне",
@@ -27,7 +71,29 @@
     "start": "1",
     "public_url": "https://t.me/odinochnoe_fermerstvo_v_b_manhwa",
     "discussion_group_id": -1004367223099,
-    "fallback_url": "https://wamanga.ru/manhwa/fermerstvo-v-basne-v-odinochku"
+    "fallback_url": "https://wamanga.ru/manhwa/fermerstvo-v-basne-v-odinochku",
+    "canonical_volume": 0,
+    "sources": [
+      {
+        "kind": "mangashi",
+        "url": "https://manga-shi.org/manga/the-top-dungeon-farmer/"
+      },
+      {
+        "kind": "wamanga",
+        "url": "https://wamanga.ru/manhwa/fermerstvo-v-basne-v-odinochku"
+      },
+      {
+        "kind": "mangabuff",
+        "url": "https://mangabuff.ru/manga/fermerstvo-v-odinochku"
+      },
+      {
+        "kind": "remanga",
+        "url": "https://remanga.org/manga/<29.04.2026>farming-in-the-tower-alone",
+        "directory": "<29.04.2026>farming-in-the-tower-alone",
+        "title_id": 79964,
+        "branch_id": 59503
+      }
+    ]
   },
   {
     "title": "Выживание в игре в роли варвара",
@@ -37,7 +103,29 @@
     "start": "1",
     "public_url": "https://t.me/vyzhivanie_v_igre_v_roli_manhwa",
     "discussion_group_id": -1004368165021,
-    "fallback_url": "https://wamanga.ru/manhwa/vyzhivaya-v-igre-za-varvara"
+    "fallback_url": "https://wamanga.ru/manhwa/vyzhivaya-v-igre-za-varvara",
+    "canonical_volume": 0,
+    "sources": [
+      {
+        "kind": "mangashi",
+        "url": "https://manga-shi.org/manga/surviving-the-game-as-a-barbarian/"
+      },
+      {
+        "kind": "wamanga",
+        "url": "https://wamanga.ru/manhwa/vyzhivaya-v-igre-za-varvara"
+      },
+      {
+        "kind": "mangabuff",
+        "url": "https://mangabuff.ru/manga/vyzhivanie-varvarom-v-igre"
+      },
+      {
+        "kind": "remanga",
+        "url": "https://remanga.org/manga/<29.04.2026>survive-as-a-barbarian-ingame_",
+        "directory": "<29.04.2026>survive-as-a-barbarian-ingame_",
+        "title_id": 79229,
+        "branch_id": 58751
+      }
+    ]
   },
   {
     "title": "Выбери меня!",
@@ -47,7 +135,29 @@
     "start": "1",
     "public_url": "https://t.me/vyberi_menya_manhwa",
     "discussion_group_id": -1003923235774,
-    "fallback_url": "https://wamanga.ru/manhwa/vyberi-menya"
+    "fallback_url": "https://wamanga.ru/manhwa/vyberi-menya",
+    "canonical_volume": 0,
+    "sources": [
+      {
+        "kind": "mangashi",
+        "url": "https://manga-shi.org/manga/pick-me-up/"
+      },
+      {
+        "kind": "wamanga",
+        "url": "https://wamanga.ru/manhwa/vyberi-menya"
+      },
+      {
+        "kind": "mangabuff",
+        "url": "https://mangabuff.ru/manga/vyberi-menya"
+      },
+      {
+        "kind": "remanga",
+        "url": "https://remanga.org/manga/the-pick-me-up_",
+        "directory": "the-pick-me-up_",
+        "title_id": 76821,
+        "branch_id": 56283
+      }
+    ]
   },
   {
     "title": "Убийца Петер",
@@ -59,7 +169,30 @@
     "discussion_group_id": -1004492171509,
     "fallback_url": "https://wamanga.ru/manhwa/ubiyca-piter",
     "reader_url": "https://mangabuff.ru/manga/killer-pedro",
-    "reader_volume": "1"
+    "reader_volume": "1",
+    "canonical_volume": 0,
+    "sources": [
+      {
+        "kind": "mangashi",
+        "url": "https://manga-shi.org/manga/killer-pedro/"
+      },
+      {
+        "kind": "mangabuff",
+        "url": "https://mangabuff.ru/manga/killer-pedro"
+      },
+      {
+        "kind": "remanga",
+        "url": "https://remanga.org/manga/killer-badro_",
+        "directory": "killer-badro_",
+        "title_id": 84572,
+        "branch_id": 64092
+      },
+      {
+        "kind": "wamanga",
+        "url": "https://wamanga.ru/manhwa/ubiyca-piter",
+        "images_enabled": false
+      }
+    ]
   },
   {
     "title": "Слёзы на увядшем цветке",
@@ -69,7 +202,22 @@
     "start": "1",
     "public_url": "https://t.me/slyozy_na_uvyadshem_tsvet_manhwa",
     "fallback_url": "https://wamanga.ru/manhwa/slezy-na-uvyadshih-cvetah",
-    "discussion_group_id": -1004410920599
+    "discussion_group_id": -1004410920599,
+    "canonical_volume": 0,
+    "sources": [
+      {
+        "kind": "mangashi",
+        "url": "https://manga-shi.org/manga/withered-flower/"
+      },
+      {
+        "kind": "wamanga",
+        "url": "https://wamanga.ru/manhwa/slezy-na-uvyadshih-cvetah"
+      },
+      {
+        "kind": "mangabuff",
+        "url": "https://mangabuff.ru/manga/slezy-na-uvyadshih-cvetah"
+      }
+    ]
   },
   {
     "title": "Лукизм",
@@ -79,6 +227,28 @@
     "start": "1",
     "public_url": "https://t.me/lukizm_manhwa",
     "fallback_url": "https://wamanga.ru/manhwa/lukizm",
-    "discussion_group_id": -1004395060469
+    "discussion_group_id": -1004395060469,
+    "canonical_volume": 0,
+    "sources": [
+      {
+        "kind": "mangashi",
+        "url": "https://manga-shi.org/manga/lookism/"
+      },
+      {
+        "kind": "wamanga",
+        "url": "https://wamanga.ru/manhwa/lukizm"
+      },
+      {
+        "kind": "mangabuff",
+        "url": "https://mangabuff.ru/manga/lukizm"
+      },
+      {
+        "kind": "remanga",
+        "url": "https://remanga.org/manga/<29.04.2026>lookism_",
+        "directory": "<29.04.2026>lookism_",
+        "title_id": 451,
+        "branch_id": 381
+      }
+    ]
   }
 ]

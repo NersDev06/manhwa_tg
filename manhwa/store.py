@@ -23,8 +23,19 @@ class Store:
     def indexes(self):
         self.subs.create_index([('url', ASCENDING), ('channel', ASCENDING)], unique=True)
         self.jobs.create_index([('subscription', 1), ('chapter_url', 1)], unique=True)
-        self.jobs.create_index([('subscription', 1), ('volume', 1), ('number', 1)])
+        self.jobs.create_index([('subscription', 1), ('volume', 1), ('number', 1)], unique=True, name='chapter_identity')
+        self.db.events.create_index('at', expireAfterSeconds=30 * 86400)
+        self.db.events.create_index([('at', -1)])
         self.db.outbox.create_index([('kind', 1), ('status', 1), ('created', 1)])
+
+    def event(self, kind, subscription=None, job=None, **fields):
+        try:
+            self.db.events.insert_one({'at': now(), 'kind': kind,
+                'subscription': subscription, 'job': str(job) if job else None, **fields})
+        except Exception:
+            # Telemetry must never change a confirmed delivery into a retry.
+            import logging
+            logging.getLogger(__name__).warning('Event history temporarily unavailable')
 
     def acquire(self):
         try:
@@ -61,16 +72,23 @@ class Store:
 
     def sync(self, sub, title, chapters):
         baseline = not sub['initialized'] and sub['mode'] == 'new'
-        existing = {j['chapter_url'] for j in self.jobs.find({'subscription': sub['_id']}, {'chapter_url': 1})}
+        saved = list(self.jobs.find({'subscription': sub['_id']}, {'chapter_url': 1, 'volume': 1, 'number': 1, 'status': 1}))
+        existing = {j['chapter_url'] for j in saved}
+        identities = {(j['volume'], j['number'].to_decimal()) for j in saved}
+        published = [(j['volume'], j['number'].to_decimal()) for j in saved if j.get('status') == 'sent']
+        frontier = max(published) if published else None
         additions = []
         for chapter in chapters:
-            if chapter.url in existing or (sub['start'] is not None and Decimal(chapter.number) < Decimal(sub['start'])):
+            identity = (int(chapter.volume), Decimal(chapter.number))
+            if identity in identities or chapter.url in existing or (sub['start'] is not None and Decimal(chapter.number) < Decimal(sub['start'])):
                 continue
             existing.add(chapter.url)
+            identities.add(identity)
             additions.append({'subscription': sub['_id'], 'chapter_url': chapter.url,
                 'title': title, 'name': chapter.name, 'volume': int(chapter.volume),
                 'number': Decimal128(chapter.number), 'channel': sub['channel'],
-                'status': 'baseline' if baseline else 'pending',
+                'status': 'baseline' if baseline or (frontier is not None and identity <= frontier) else 'pending',
+                'discovery_note': 'Older than published frontier; not backfilled automatically' if frontier is not None and identity <= frontier else None,
                 'attempts': 0, 'sent_parts': [], 'created': now()})
         if additions:
             try:

@@ -1,10 +1,11 @@
 """Convert one original image per process; preserve its full reading canvas."""
 import sys
+import shutil
 import warnings
 from pathlib import Path
 from PIL import Image
 
-MAX_PIXELS = 16_000_000
+MAX_PIXELS = 32_000_000
 
 
 def tile_image(raw, folder, prefix):
@@ -14,6 +15,10 @@ def tile_image(raw, folder, prefix):
         with Image.open(raw) as image:
             if image.width * image.height > MAX_PIXELS:
                 raise ValueError('Source image exceeds safe pixel limit')
+            if image.format == 'JPEG' and image.mode in ('RGB', 'L'):
+                image.load()  # Detect truncated streams; preserve original JPEG quality.
+                shutil.copyfile(raw, Path(folder) / f'{prefix}-00000.jpg')
+                return 1
             with image.convert('RGB') as rgb:
                 rgb.save(Path(folder) / f'{prefix}-00000.jpg', 'JPEG', quality=90)
             image.close()

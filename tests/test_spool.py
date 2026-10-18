@@ -14,3 +14,13 @@ def test_prepared_chapter_reused_after_failed_delivery(monkeypatch,tmp_path):
     assert builder.call_count==1
     spool.clean(job)
     assert not (tmp_path/'job').exists()
+
+
+def test_lost_cache_after_partial_delivery_never_rebuilds_from_another_source(monkeypatch,tmp_path):
+    import pytest
+    monkeypatch.setenv('MANHWA_SPOOL',str(tmp_path))
+    builder=Mock();monkeypatch.setattr(spool,'build_chapter',builder)
+    with pytest.raises(RuntimeError,match='partial delivery'):
+        with spool.prepared(None,{'_id':'partial','chapter_url':'chapter','sent_parts':[{'message_id':5}]}):
+            pass
+    builder.assert_not_called()

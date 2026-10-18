@@ -15,6 +15,10 @@ from .telegram import DeliveryRejected, DeliveryUnknown
 log = logging.getLogger(__name__)
 
 
+class WorkerStopping(Exception):
+    pass
+
+
 class Worker:
     def __init__(self, store, source, telegram, poll_seconds=1800, admin=None, daily_limit=0):
         self.store, self.source, self.telegram = store, source, telegram
@@ -92,8 +96,17 @@ class Worker:
                     self.telegram.alert(self.admin, f"Ошибка источника для {sub['_id']}: {kind}")
                 log.warning('Source check failed for %s (%s)', sub['_id'], kind)
 
+    def check_delivery_lease(self):
+        if self.stop.is_set() or not self.lease_ok.is_set():
+            raise WorkerStopping()
+        if not self.store.renew():
+            self.lease_ok.clear()
+            self.stop.set()
+            raise WorkerStopping()
+
     def process(self, job):
         sending = False
+        confirmed = False
         self.state(stage='preparing', job=str(job['_id']), title=job['title'].split(' / ')[0], chapter=str(job['number']), page=0, pages=0, error=None)
         self.source.progress = lambda page, total: self.state(stage='preparing', page=page, pages=total)
         self.telegram.progress = lambda sent, total: self.state(upload_sent=sent, upload_total=total)
@@ -101,11 +114,12 @@ class Worker:
         try:
             with spool.prepared(self.source, job) as (folder, (paths, stats)):
                 self.store.jobs.update_one({'_id': job['_id']}, {'$set': {'pdf_stats': stats}})
+                if stats.get('source'):
+                    self.store.subs.update_one({'_id': job['subscription']}, {'$set': {'active_source': stats['source']}})
                 meta = (self.store.subs.find_one({'_id': job['subscription']}) or {}).get('metadata') or {'main_title_ru': job['title'].split(' / ')[0]}
                 if not job.get('preview_receipt') and not sent:
                     preview = from_cached_pages(folder)
-                    if not self.lease_ok.is_set() or self.stop.is_set() or not self.store.renew():
-                        raise RuntimeError('Worker stopping before preview')
+                    self.check_delivery_lease()
                     self.store.jobs.update_one({'_id': job['_id']}, {'$set': {'status': 'sending', 'delivery_phase': 'preview'}})
                     sending = True
                     photo = self.telegram.photo(job['channel'], preview,
@@ -118,8 +132,7 @@ class Worker:
                 for index, path in enumerate(paths):
                     if index < len(sent):
                         continue
-                    if not self.lease_ok.is_set() or self.stop.is_set() or not self.store.renew():
-                        raise RuntimeError('Worker stopping before upload')
+                    self.check_delivery_lease()
                     self.store.jobs.update_one({'_id': job['_id']}, {'$set': {'status': 'sending'}})
                     sending = True
                     self.state(stage='uploading', part=index + 1, parts=len(paths), upload_bytes=path.stat().st_size, upload_sent=0, upload_total=path.stat().st_size)
@@ -133,16 +146,27 @@ class Worker:
                     self.store.jobs.update_one({'_id': job['_id']}, {'$set': {'sent_parts': sent}})
                     sending = False
                 self.store.jobs.update_one({'_id': job['_id']}, {'$set': {'status': 'sent', 'sent_at': now(), 'error': None}})
+                confirmed = True
                 spool.clean(job)
                 self.state(stage='idle', job=None)
+                self.store.event('published', job['subscription'], job['_id'], number=str(job['number']), source=stats.get('source'), pages=stats['pdf_pages'])
                 log.info('Published job %s (%s PDF pages)', job['_id'], stats['pdf_pages'])
+        except WorkerStopping:
+            if self.lease_ok.is_set():
+                self.store.jobs.update_one({'_id': job['_id'], 'status': 'processing'},
+                    {'$set': {'status': 'pending', 'retry_at': now()}, '$inc': {'attempts': -1}})
+            self.state(stage='stopping', job=None)
         except Exception as exc:
+            if confirmed:
+                log.warning('Post-delivery maintenance deferred (%s)', type(exc).__name__)
+                return
             uncertain = isinstance(exc, DeliveryUnknown) or (sending and not isinstance(exc, DeliveryRejected))
             kind = type(exc).__name__
             detail = str(exc)[:350] if isinstance(exc, (ValueError, RuntimeError)) else kind
             self.store.jobs.update_one({'_id': job['_id']}, {'$set': {'error_type': kind}})
             status = self.store.fail(job, detail, uncertain=uncertain,
                 retryable=isinstance(exc, DeliveryRejected) and exc.code in (408, 429))
+            self.store.event('delivery_uncertain' if uncertain else 'job_failed', job['subscription'], job['_id'], number=str(job['number']), error_type=kind, status=status)
             self.state(stage='error', error=detail, job=str(job['_id']))
             if isinstance(exc, DeliveryRejected) and exc.retry_after:
                 from datetime import timedelta
@@ -162,6 +186,7 @@ class Worker:
         try:
             self.store.recover()
             self.state(stage='starting', host='local', heartbeat=now())
+            self.store.event('worker_started')
             metrics_at = 0
             promotions.recover(self.store)
             while not self.stop.is_set():
@@ -170,8 +195,13 @@ class Worker:
                     self.metrics()
                     metrics_at = time.monotonic()
                 self.discover()
-                if not self.lease_ok.is_set():
+                if self.stop.is_set() or not self.lease_ok.is_set():
                     break
+                control = self.store.db.runtime.find_one({'_id': 'publisher_control'}) or {}
+                if control.get('paused'):
+                    self.state(stage='paused', job=None)
+                    self.stop.wait(5)
+                    continue
                 cooldown = self.store.db.runtime.find_one({'_id': 'telegram'}) or {}
                 until = cooldown.get('not_before')
                 if until and until.replace(tzinfo=now().tzinfo) > now():
@@ -193,6 +223,8 @@ class Worker:
                 cooldown = self.store.db.runtime.find_one({'_id': 'telegram'}) or {}
                 if cooldown.get('not_before') and cooldown['not_before'].replace(tzinfo=now().tzinfo) > now():
                     continue
+                if self.stop.is_set() or (self.store.db.runtime.find_one({'_id': 'publisher_control'}) or {}).get('paused'):
+                    continue
                 job = self.store.claim(self.daily_limit)
                 if job:
                     self.process(job)
@@ -203,4 +235,7 @@ class Worker:
             self.stop.set()
             self.heartbeat_stop.set()
             beat.join(timeout=25)
+            if self.lease_ok.is_set():
+                self.state(stage='stopped', job=None)
+                self.store.event('worker_stopped')
             self.store.release()

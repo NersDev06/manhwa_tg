@@ -23,3 +23,11 @@ def test_oversized_image_fails_before_conversion(monkeypatch, tmp_path):
     with pytest.raises(ValueError):
         tile_image(original, tmp_path, 'page')
     assert not list(tmp_path.glob('page-*.jpg'))
+
+
+def test_jpeg_preserves_original_compressed_image_without_reencoding(tmp_path):
+    raw=tmp_path/'original.jpg'
+    with Image.new('RGB',(600,1800),(100,150,180)) as image:
+        image.save(raw,'JPEG',quality=83)
+    tile_image(raw,tmp_path,'page')
+    assert (tmp_path/'page-00000.jpg').read_bytes()==raw.read_bytes()

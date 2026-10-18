@@ -22,6 +22,8 @@ def prepared(source, job):
         except (ValueError, KeyError, OSError):
             pass
     if cached is None:
+        if job.get('sent_parts'):
+            raise RuntimeError('Prepared chapter missing after partial delivery; refusing a different source or part layout')
         cached = build_chapter(source, job['chapter_url'], folder)
         paths, stats = cached
         temp = manifest.with_suffix('.tmp')

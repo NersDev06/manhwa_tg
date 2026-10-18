@@ -99,3 +99,46 @@ def test_explicit_rate_limit_stays_retryable_after_five_attempts(monkeypatch,tmp
     worker.process(job)
     assert store.jobs.find_one()['status']=='pending'
     assert store.jobs.find_one()['preview_receipt']['message_id']==122
+
+
+def test_graceful_stop_preserves_pending_without_consuming_attempt(monkeypatch, tmp_path):
+    store, job, telegram, worker = setup(monkeypatch, tmp_path)
+    worker.stop.set()
+    worker.process(job)
+    saved = store.jobs.find_one()
+    assert saved['status'] == 'pending'
+    assert saved['attempts'] == 0
+    telegram.photo.assert_not_called()
+    telegram.document.assert_not_called()
+
+
+def test_event_failure_does_not_requeue_confirmed_delivery(monkeypatch, tmp_path):
+    store, job, telegram, worker = setup(monkeypatch, tmp_path)
+    telegram.document.return_value = {'message_id': 123, 'file_id': 'test'}
+    monkeypatch.setattr(store.db.events, 'insert_one', Mock(side_effect=RuntimeError('telemetry unavailable')))
+    worker.process(job)
+    assert store.jobs.find_one()['status'] == 'sent'
+    assert len(store.jobs.find_one()['sent_parts']) == 1
+
+
+def test_lost_lease_cannot_send_or_requeue_another_workers_job(monkeypatch, tmp_path):
+    store, job, telegram, worker = setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(store, 'renew', lambda: False)
+    worker.process(job)
+    assert not worker.lease_ok.is_set()
+    assert store.jobs.find_one()['status'] == 'processing'
+    telegram.photo.assert_not_called()
+    telegram.document.assert_not_called()
+
+
+def test_post_delivery_state_failure_keeps_confirmed_status(monkeypatch, tmp_path):
+    store, job, telegram, worker = setup(monkeypatch, tmp_path)
+    telegram.document.return_value = {'message_id': 123, 'file_id': 'test'}
+    original = worker.state
+    def state(**fields):
+        if fields.get('stage') == 'idle':
+            raise RuntimeError('metrics unavailable')
+        original(**fields)
+    worker.state = state
+    worker.process(job)
+    assert store.jobs.find_one()['status'] == 'sent'

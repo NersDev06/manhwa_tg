@@ -2,6 +2,9 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Sun,
+  Pause,
+  Play,
+  Database,
   Moon,
   Activity,
   ArrowDown,
@@ -31,6 +34,18 @@ type Channel = {
   error: string | null;
   source: string;
   fallback_missing?: string[];
+  available_sources?: string[];
+  source_health?: Record<
+    string,
+    {
+      state: string;
+      chapters?: number;
+      updated: string;
+      http_status?: number;
+      error?: string;
+      images_enabled?: boolean;
+    }
+  >;
   stats: {
     subscribers: number;
     linked_chat_id?: number;
@@ -65,6 +80,16 @@ type Job = {
 type State = {
   at: string;
   online: boolean;
+  paused: boolean;
+  events: {
+    _id: string;
+    at: string;
+    kind: string;
+    subscription?: string;
+    number?: string;
+    source?: string;
+    error_type?: string;
+  }[];
   worker: {
     stage: string;
     title?: string;
@@ -137,6 +162,26 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
     [jobs, setJobs] = useState<Job[]>([]),
     [total, setTotal] = useState(0),
     [queueError, setQueueError] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  async function pause(paused: boolean, subscription?: string) {
+    setActionBusy(true);
+    setActionError("");
+    try {
+      const r = await fetch("/api/control", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paused, subscription }),
+      });
+      const value = await r.json();
+      if (!r.ok) throw Error(value.error);
+      await refresh();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Ошибка управления");
+    } finally {
+      setActionBusy(false);
+    }
+  }
   const refresh = useCallback(async () => {
     try {
       const r = await fetch("/api/state", { cache: "no-store" });
@@ -288,6 +333,7 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
             ["queue", "Очередь глав", Layers3],
             ["channels", "Каналы", BookOpen],
             ["issues", "События", Activity],
+            ["sources", "Источники", Database],
           ].map(([id, label, Icon]) => {
             const I = Icon as typeof Activity;
             return (
@@ -333,6 +379,7 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
                   queue: "Очередь глав",
                   channels: "Каналы",
                   issues: "События",
+                  sources: "Источники",
                 } as Record<string, string>
               )[tab]
             }
@@ -366,7 +413,9 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
                     ? "Очередь публикаций"
                     : tab === "channels"
                       ? "Твоя сеть каналов"
-                      : "Требуют внимания"}
+                      : tab === "sources"
+                        ? "Резервные источники"
+                        : "Журнал работы"}
                 <span className="title-dot">.</span>
               </h1>
               <p className="muted">
@@ -376,7 +425,9 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
                     ? "Порядок глав, повторные попытки и результаты отправки."
                     : tab === "channels"
                       ? "Живые показатели и состояние публикаций каждого тайтла."
-                      : "Ошибки подготовки и отправки, которые блокируют следующие главы."}
+                      : tab === "sources"
+                        ? "Доступность каталогов и автоматическая смена источника."
+                        : "История публикаций, настройки и главы, требующие проверки."}
               </p>
             </div>
             <button className="secondary" onClick={() => void refresh()}>
@@ -415,13 +466,17 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
                         <span>Публикации — под контролем.</span>
                       </h2>
                       <p>
-                        {data.worker?.stage === "uploading"
-                          ? `Отправляется PDF · ${data.worker.title}, глава ${data.worker.chapter}`
-                          : data.worker?.stage === "preparing"
-                            ? `Готовим главу ${data.worker.chapter} · ${data.worker.title}`
-                            : attention
-                              ? `${attention} ${attention === 1 ? "глава требует" : "глав требуют"} проверки. Остальные каналы продолжают свою очередь.`
-                              : "Наблюдаем за источниками и отправляем главы по очереди."}
+                        {data.paused &&
+                        data.worker?.stage !== "uploading" &&
+                        data.worker?.stage !== "preparing"
+                          ? "Автопубликация приостановлена. Главы ждут в очереди."
+                          : data.worker?.stage === "uploading"
+                            ? `Отправляется PDF · ${data.worker.title}, глава ${data.worker.chapter}`
+                            : data.worker?.stage === "preparing"
+                              ? `Готовим главу ${data.worker.chapter} · ${data.worker.title}`
+                              : attention
+                                ? `${attention} ${attention === 1 ? "глава требует" : "глав требуют"} проверки. Остальные каналы продолжают свою очередь.`
+                                : "Наблюдаем за источниками и отправляем главы по очереди."}
                       </p>
                       <button onClick={() => goQueue()} className="hero-link">
                         Посмотреть очередь <ArrowUpRight size={17} />
@@ -517,14 +572,18 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
                             {data.worker?.stage === "preparing" ||
                             data.worker?.stage === "uploading"
                               ? data.worker.title
-                              : "Ожидание следующей главы"}
+                              : data.paused
+                                ? "Публикации на паузе"
+                                : "Ожидание следующей главы"}
                           </h3>
                           <p className="muted">
                             {data.worker?.stage === "preparing" ||
                             data.worker?.stage === "uploading"
                               ? `Глава ${data.worker.chapter}`
                               : data.online
-                                ? "Воркер проверяет очередь и источники"
+                                ? data.paused
+                                  ? "Нажми «Продолжить всё» для возобновления"
+                                  : "Воркер проверяет очередь и источники"
                                 : "Запусти локальный воркер для продолжения"}
                           </p>
                         </div>
@@ -622,6 +681,30 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
                     </div>
                   </section>
                 </>
+              )}
+              {(tab === "overview" || tab === "channels") && (
+                <section className="panel publisher-controls">
+                  <div>
+                    <strong>
+                      {data.paused
+                        ? "Публикации на паузе"
+                        : "Автопубликация включена"}
+                    </strong>
+                    <p>
+                      Пауза действует после текущей главы. Очередь и готовые PDF
+                      сохраняются.
+                    </p>
+                    {actionError && <p role="alert">{actionError}</p>}
+                  </div>
+                  <button
+                    className="text-button"
+                    disabled={actionBusy}
+                    onClick={() => void pause(!data.paused)}
+                  >
+                    {data.paused ? <Play size={16} /> : <Pause size={16} />}{" "}
+                    {data.paused ? "Продолжить всё" : "Приостановить всё"}
+                  </button>
+                </section>
               )}
               {(tab === "overview" || tab === "channels") && (
                 <section className="panel channel-panel">
@@ -752,6 +835,21 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
                                 <td>
                                   <button
                                     className="icon-button"
+                                    disabled={actionBusy}
+                                    aria-label={
+                                      (c.enabled ? "Пауза: " : "Продолжить: ") +
+                                      c.title
+                                    }
+                                    onClick={() => void pause(c.enabled, c.id)}
+                                  >
+                                    {c.enabled ? (
+                                      <Pause size={16} />
+                                    ) : (
+                                      <Play size={16} />
+                                    )}
+                                  </button>
+                                  <button
+                                    className="icon-button"
                                     aria-label={"Очередь: " + c.title}
                                     onClick={() => goQueue(c.id)}
                                   >
@@ -871,6 +969,69 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
                   </div>
                 </section>
               )}
+              {tab === "sources" && (
+                <section className="sources-grid">
+                  <div className="panel source-intro">
+                    <ShieldCheck size={24} />
+                    <div>
+                      <h2>Одна глава — одна публикация</h2>
+                      <p>
+                        При сбое берём целую главу из следующего источника.
+                        Номер главы и история отправок сохраняются. ReManga
+                        отдаёт только открытые бесплатные главы.
+                      </p>
+                    </div>
+                  </div>
+                  {data.channels.map((c) => (
+                    <article className="panel source-card" key={c.id}>
+                      <div className="panel-heading">
+                        <h2>{c.title}</h2>
+                        <span className="count-badge">
+                          {c.available_sources?.length || 0} доступны
+                        </span>
+                      </div>
+                      <p className="muted">Последний источник: {c.source}</p>
+                      {Object.entries(c.source_health || {}).map(
+                        ([key, health]) => (
+                          <div className="source-line" key={key}>
+                            <span
+                              className={
+                                "source-dot " +
+                                (health.state === "available" ? "ok" : "bad")
+                              }
+                            />
+                            <div>
+                              <strong>
+                                {{
+                                  mangashi: "MangaShi",
+                                  wamanga: "WaManga",
+                                  mangabuff: "MangaBuff",
+                                  remanga: "ReManga",
+                                }[key] || key}
+                              </strong>
+                              <small>
+                                {health.state === "available"
+                                  ? `${health.chapters ?? "—"} глав${health.images_enabled === false ? " · только каталог, изображения отключены" : " в каталоге"}`
+                                  : health.http_status
+                                    ? `HTTP ${health.http_status} · используем резерв`
+                                    : "Источник временно недоступен"}
+                              </small>
+                            </div>
+                            <time>{time(health.updated)}</time>
+                          </div>
+                        ),
+                      )}
+                      {!!c.fallback_missing?.length && (
+                        <p className="source-warning">
+                          Нет в доступных резервах:{" "}
+                          {c.fallback_missing.join(", ")}. Главы остаются в
+                          очереди.
+                        </p>
+                      )}
+                    </article>
+                  ))}
+                </section>
+              )}
               {tab === "issues" && (
                 <section className="issues-list">
                   {data.issues
@@ -911,6 +1072,56 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
                       <p>Нет глав с ошибкой или неподтверждённой доставкой.</p>
                     </div>
                   )}
+                </section>
+              )}
+              {tab === "issues" && (
+                <section className="panel event-history">
+                  <div className="panel-heading">
+                    <h2>Журнал работы</h2>
+                    <span className="count-badge">30 дней</span>
+                  </div>
+                  {!data.events?.length && (
+                    <p className="muted">
+                      Здесь появятся публикации, перезапуски и изменения
+                      настроек.
+                    </p>
+                  )}
+                  {data.events?.map((e) => (
+                    <div className="recent-row" key={e._id}>
+                      <span className="sent-icon">
+                        <Activity size={15} />
+                      </span>
+                      <div>
+                        <strong>
+                          {{
+                            published: "Глава опубликована",
+                            worker_started: "Воркер запущен",
+                            worker_stopped: "Воркер остановлен",
+                            paused: "Публикации приостановлены",
+                            resumed: "Публикации возобновлены",
+                            job_failed: "Ошибка обработки",
+                            delivery_uncertain: "Нужна проверка доставки",
+                          }[e.kind] || e.kind}
+                        </strong>
+                        <small>
+                          {e.subscription
+                            ? title(e.subscription)
+                            : "Все каналы"}
+                          {e.number ? ` · Глава ${e.number}` : ""}
+                          {e.source ? ` · ${e.source}` : ""}
+                          {e.error_type ? ` · ${e.error_type}` : ""}
+                        </small>
+                      </div>
+                      <time>
+                        {new Date(e.at).toLocaleDateString("ru", {
+                          timeZone: "Asia/Bishkek",
+                          day: "2-digit",
+                          month: "2-digit",
+                        })}{" "}
+                        · {time(e.at)}
+                      </time>
+                    </div>
+                  ))}
                 </section>
               )}
               {tab === "overview" && (

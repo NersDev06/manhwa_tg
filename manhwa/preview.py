@@ -6,13 +6,18 @@ from PIL import Image, ImageStat, ImageChops
 
 
 def crop_preview(raw, target):
-    # Keep the decoder in a subprocess in production, just like PDF conversion.
+    # Decode in a child process and avoid full-size RGB copies before selecting a panel.
+    from .images import MAX_PIXELS
     with Image.open(raw) as source:
-        if source.width * source.height > 16_000_000:
+        if source.width * source.height > MAX_PIXELS:
             raise ValueError('Image pixel limit exceeded')
-        image = source.convert('RGB')
-    small = image.copy()
-    small.thumbnail((160, 4000))
+        return _crop_panel(source, target)
+
+
+def _crop_panel(image, target):
+    scale = min(1, 160 / image.width, 4000 / image.height)
+    small = image.resize((max(1, int(image.width * scale)), max(1, int(image.height * scale))),
+                         Image.Resampling.BILINEAR).convert('RGB')
     width, height = small.size
     rows = []
     for y in range(height):
@@ -28,18 +33,22 @@ def crop_preview(raw, target):
             if y - start >= 35:
                 spans.append((start, y))
             start = None
-    # Prefer a substantial panel near the page centre; fallback is a central square.
+    # Prefer a substantial panel near the page centre; fallback retains the whole page.
     centre = height / 2
     spans = [span for span in spans if span[1] - span[0] >= max(35, width * 0.5)] or spans
     a, b = min(spans, key=lambda span: abs((span[0] + span[1]) / 2 - centre)) if spans else (0, height)
     scale = image.height / height
     top, bottom = int(a * scale), int(b * scale)
     # Keep the selected panel intact; crop margins, never zoom into a square.
-    panel = image.crop((0, top, image.width, bottom))
+    panel = image.crop((0, top, image.width, bottom)).convert('RGB')
     ink = ImageChops.difference(panel, Image.new('RGB', panel.size, 'white')).convert('L').point(lambda value: 255 if value > 20 else 0).getbbox()
     if ink:
         panel = panel.crop(ink)
     # Telegram photos accept at most 20:1; padding preserves unusually tall panels.
+    if panel.width > panel.height * 20:
+        canvas = Image.new('RGB', (panel.width, (panel.width + 19) // 20), 'white')
+        canvas.paste(panel, (0, (canvas.height - panel.height) // 2))
+        panel = canvas
     if panel.height > panel.width * 20:
         canvas = Image.new('RGB', ((panel.height + 19) // 20, panel.height), 'white')
         canvas.paste(panel, ((canvas.width - panel.width) // 2, 0))
@@ -73,6 +82,12 @@ def from_cached_pages(folder):
     """Reuse the PDF's downloaded pages; no second request to the source."""
     folder = Path(folder)
     pages = sorted(folder.glob('page-*-*.jpg'))
+    substantial = []
+    for path in pages:
+        with Image.open(path) as image:
+            if image.width >= 320 and image.height >= 200:
+                substantial.append(path)
+    pages = substantial or pages
     if not pages:
         raise ValueError('No downloaded pages for chapter preview')
     target = folder / 'preview.jpg'
