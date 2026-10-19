@@ -142,3 +142,20 @@ def test_post_delivery_state_failure_keeps_confirmed_status(monkeypatch, tmp_pat
     worker.state = state
     worker.process(job)
     assert store.jobs.find_one()['status'] == 'sent'
+
+
+def test_reaction_failure_does_not_republish_or_block_pdf(monkeypatch, tmp_path):
+    store, job, telegram, worker = setup(monkeypatch, tmp_path)
+    telegram.react.side_effect = RuntimeError('reaction unavailable')
+    telegram.document.return_value = {'message_id': 123, 'file_id': 'test'}
+    worker.process(job)
+    assert store.jobs.find_one()['status'] == 'sent'
+    assert telegram.photo.call_count == telegram.document.call_count == 1
+
+
+def test_free_reaction_seeded_on_preview_and_document(monkeypatch, tmp_path):
+    store, job, telegram, worker = setup(monkeypatch, tmp_path)
+    telegram.react.return_value = True
+    telegram.document.return_value = {'message_id': 123, 'file_id': 'test'}
+    worker.process(job)
+    assert store.jobs.find_one()['reaction_seeded'] == [122, 123]

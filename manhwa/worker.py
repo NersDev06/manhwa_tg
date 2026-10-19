@@ -106,6 +106,19 @@ class Worker:
             self.stop.set()
             raise WorkerStopping()
 
+    def seed_reaction(self, job, message_id):
+        if self.stop.is_set() or not self.lease_ok.is_set():
+            return
+        try:
+            if self.telegram.react(job['channel'], message_id):
+                self.store.jobs.update_one({'_id': job['_id']},
+                    {'$addToSet': {'reaction_seeded': message_id}})
+            else:
+                log.warning('Free reaction unavailable for message %s', message_id)
+        except Exception:
+            # The original message is already confirmed; reaction errors are optional.
+            log.warning('Free reaction deferred for message %s', message_id)
+
     def process(self, job):
         sending = False
         confirmed = False
@@ -130,6 +143,7 @@ class Worker:
                     self.store.jobs.update_one({'_id': job['_id']}, {'$set': {
                         'preview_receipt': receipt, 'status': 'processing', 'delivery_phase': 'pdf'}})
                     sending = False
+                    self.seed_reaction(job, photo['message_id'])
 
                 for index, path in enumerate(paths):
                     if index < len(sent):
@@ -147,6 +161,7 @@ class Worker:
                     sent.append(receipt)
                     self.store.jobs.update_one({'_id': job['_id']}, {'$set': {'sent_parts': sent}})
                     sending = False
+                    self.seed_reaction(job, receipt['message_id'])
                 self.store.jobs.update_one({'_id': job['_id']}, {'$set': {'status': 'sent', 'sent_at': now(), 'error': None}})
                 confirmed = True
                 spool.clean(job)

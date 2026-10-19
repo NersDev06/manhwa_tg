@@ -65,6 +65,17 @@ class Telegram:
         except (KeyError, TypeError):
             raise DeliveryUnknown('Incomplete Telegram delivery receipt') from None
 
+    def react(self, channel, message_id, emoji='👍'):
+        """Set this bot's free reaction; failure must never retry the original post."""
+        try:
+            response = requests.post(self.base + '/setMessageReaction', json={
+                'chat_id': channel, 'message_id': message_id,
+                'reaction': [{'type': 'emoji', 'emoji': emoji}], 'is_big': False},
+                timeout=(5, 10))
+            return response.json().get('ok') is True
+        except (requests.RequestException, ValueError, AttributeError):
+            return False
+
     def edit_media(self, channel, message_id, path, kind, caption):
         if kind not in ('document', 'photo'):
             raise ValueError('Unsupported media type')
