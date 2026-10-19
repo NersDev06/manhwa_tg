@@ -40,7 +40,11 @@ def _crop_panel(image, target):
     scale = image.height / height
     top, bottom = int(a * scale), int(b * scale)
     # Keep the selected panel intact; crop margins, never zoom into a square.
-    panel = image.crop((0, top, image.width, bottom)).convert('RGB')
+    region = image.crop((0, top, image.width, bottom))
+    # Reduce before RGB copies and margin analysis to stay within a 512 MB dyno.
+    region.thumbnail((1000, 1800))
+    panel = region.convert('RGB')
+    region.close()
     ink = ImageChops.difference(panel, Image.new('RGB', panel.size, 'white')).convert('L').point(lambda value: 255 if value > 20 else 0).getbbox()
     if ink:
         panel = panel.crop(ink)

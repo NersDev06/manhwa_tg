@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import signal
 import threading
@@ -20,12 +21,13 @@ class WorkerStopping(Exception):
 
 
 class Worker:
-    def __init__(self, store, source, telegram, poll_seconds=1800, admin=None, daily_limit=0):
+    def __init__(self, store, source, telegram, poll_seconds=1800, admin=None, daily_limit=0, chapter_delay=10):
         self.store, self.source, self.telegram = store, source, telegram
         if hasattr(source, "bind"):
             source.bind(store)
         self.poll_seconds, self.admin = poll_seconds, admin
         self.daily_limit = daily_limit
+        self.chapter_delay = max(1, int(chapter_delay))
         self.stop = threading.Event()
         self.heartbeat_stop = threading.Event()
         self.lease_ok = threading.Event()
@@ -185,7 +187,7 @@ class Worker:
         beat.start()
         try:
             self.store.recover()
-            self.state(stage='starting', host='local', heartbeat=now())
+            self.state(stage='starting', host='heroku' if os.environ.get('DYNO') else 'local', chapter_delay=self.chapter_delay, heartbeat=now())
             self.store.event('worker_started')
             metrics_at = 0
             promotions.recover(self.store)
@@ -228,7 +230,7 @@ class Worker:
                 job = self.store.claim(self.daily_limit)
                 if job:
                     self.process(job)
-                    self.stop.wait(60)
+                    self.stop.wait(self.chapter_delay)
                 else:
                     self.stop.wait(10)
         finally:

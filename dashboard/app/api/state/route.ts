@@ -151,6 +151,8 @@ export async function GET() {
         worker: worker
           ? {
               stage: worker.stage,
+              host: worker.host,
+              chapter_delay: worker.chapter_delay,
               title: worker.title,
               chapter: worker.chapter,
               job: worker.job,

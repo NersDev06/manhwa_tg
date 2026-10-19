@@ -92,6 +92,8 @@ type State = {
   }[];
   worker: {
     stage: string;
+    host?: string;
+    chapter_delay?: number;
     title?: string;
     chapter?: string;
     page?: number;
@@ -352,9 +354,21 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
         <div className="sidebar-bottom">
           <div className="local-box">
             <span className={"led " + (data?.online ? "on" : "")} />
-            <strong>Локальный воркер</strong>
-            <p>Публикации выполняются на твоём компьютере.</p>
-            <small>Heroku отключён</small>
+            <strong>
+              {data?.worker?.host === "heroku"
+                ? "Облачный воркер"
+                : "Локальный воркер"}
+            </strong>
+            <p>
+              {data?.worker?.host === "heroku"
+                ? "Публикации выполняются на Heroku. Ноутбук можно выключить."
+                : "Публикации выполняются на твоём компьютере."}
+            </p>
+            <small>
+              {data?.worker?.host === "heroku"
+                ? `Basic · пауза ${data.worker.chapter_delay || 10} сек.`
+                : "Heroku отключён"}
+            </small>
           </div>
           <button
             className="logout"
@@ -584,7 +598,7 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
                                 ? data.paused
                                   ? "Нажми «Продолжить всё» для возобновления"
                                   : "Воркер проверяет очередь и источники"
-                                : "Запусти локальный воркер для продолжения"}
+                                : "Воркер не на связи — проверь состояние сервера"}
                           </p>
                         </div>
                       </div>
