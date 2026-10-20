@@ -144,7 +144,7 @@ def main():
     elif args.command == 'worker':
         from .worker import Worker
         Worker(store, source, Telegram(os.environ.get('TELEGRAM_BOT_TOKEN')),
-               max(60, int(os.environ.get('POLL_SECONDS', '1800'))), os.environ.get('ADMIN_CHAT_ID'),
+               max(60, int(os.environ.get('POLL_SECONDS', '3600'))), os.environ.get('ADMIN_CHAT_ID'),
                max(0, int(os.environ.get('DAILY_CHAPTER_LIMIT', '0'))),
                max(1, int(os.environ.get('CHAPTER_DELAY_SECONDS', '10')))).run()
 

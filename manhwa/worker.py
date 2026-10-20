@@ -21,7 +21,7 @@ class WorkerStopping(Exception):
 
 
 class Worker:
-    def __init__(self, store, source, telegram, poll_seconds=1800, admin=None, daily_limit=0, chapter_delay=10):
+    def __init__(self, store, source, telegram, poll_seconds=3600, admin=None, daily_limit=0, chapter_delay=10):
         self.store, self.source, self.telegram = store, source, telegram
         if hasattr(source, "bind"):
             source.bind(store)
@@ -202,7 +202,7 @@ class Worker:
         beat.start()
         try:
             self.store.recover()
-            self.state(stage='starting', host='heroku' if os.environ.get('DYNO') else 'local', chapter_delay=self.chapter_delay, heartbeat=now())
+            self.state(stage='starting', host='heroku' if os.environ.get('DYNO') else 'local', chapter_delay=self.chapter_delay, poll_seconds=self.poll_seconds, heartbeat=now())
             self.store.event('worker_started')
             metrics_at = 0
             promotions.recover(self.store)

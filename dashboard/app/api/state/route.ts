@@ -153,6 +153,7 @@ export async function GET() {
               stage: worker.stage,
               host: worker.host,
               chapter_delay: worker.chapter_delay,
+              poll_seconds: worker.poll_seconds,
               title: worker.title,
               chapter: worker.chapter,
               job: worker.job,

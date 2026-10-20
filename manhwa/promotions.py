@@ -1,24 +1,23 @@
-"""Durable promotions: suppress archives, send after each three live chapters.
+"""Durable recommendations after every three published chapters, including archives.
 Unknown delivery is held for manual inspection, never automatically reposted.
 """
 from datetime import timedelta
 from .store import now
 from .telegram import DeliveryRejected
 
-DONE = ['sent', 'baseline', 'skipped']
-
-
 def prepare(store):
     for sub in store.subs.find({'enabled': True, 'initialized': True}):
-        if store.jobs.find_one({'subscription': sub['_id'], 'status': {'$nin': DONE}}):
-            continue
         count = store.jobs.count_documents({'subscription': sub['_id'], 'status': 'sent'})
         anchor = sub.get('promotion_anchor')
         if anchor is None:
             store.subs.update_one({'_id': sub['_id'], 'promotion_anchor': {'$exists': False}},
-                                 {'$set': {'promotion_anchor': count, 'caught_up_at': now()}})
+                                 {'$set': {'promotion_anchor': 0}})
+            anchor = 0
+        # Keep one unresolved recommendation per channel; never repeat unknown delivery.
+        if store.db.outbox.find_one({'subscription': sub['_id'], 'kind': 'promotion',
+                'status': {'$in': ['pending', 'sending', 'uncertain', 'failed']}}):
             continue
-        # One outbox item per group. Jumping over a backlog must not produce a promo flood.
+        # Coalesce any missed older milestones into a single post.
         if count - anchor >= 3:
             key = f"promo:{sub['_id']}:{anchor + 3}"
             store.db.outbox.update_one({'_id': key}, {'$setOnInsert': {
@@ -27,13 +26,18 @@ def prepare(store):
 
 
 def deliver_one(store, telegram):
-    item = store.db.outbox.find_one({'kind': 'promotion', 'status': 'pending', '$or': [
-        {'retry_at': {'$exists': False}}, {'retry_at': {'$lte': now()}}]}, sort=[('created', 1)])
+    item = sub = None
+    pending = store.db.outbox.find({'kind': 'promotion', 'status': 'pending', '$or': [
+        {'retry_at': {'$exists': False}}, {'retry_at': {'$lte': now()}}]}).sort('created', 1)
+    for candidate in pending:
+        channel = store.subs.find_one({'_id': candidate['subscription'], 'enabled': True})
+        # Never interrupt a multipart chapter. Queued archive chapters do not block ads.
+        if channel is None or store.jobs.find_one({'subscription': channel['_id'],
+                'status': {'$in': ['processing', 'sending']}}):
+            continue
+        item, sub = candidate, channel
+        break
     if item is None:
-        return
-    # Do not put promotions between pending archive chapters or while a title is paused.
-    sub = store.subs.find_one({'_id': item['subscription'], 'enabled': True})
-    if sub is None or store.jobs.find_one({'subscription': sub['_id'], 'status': {'$nin': DONE}}):
         return
     buttons = [[{'text': other.get('metadata', {}).get('main_title_ru') or other.get('title', 'Манхва'),
                  'url': other['public_url']}]
@@ -41,8 +45,9 @@ def deliver_one(store, telegram):
                if other['_id'] != item['subscription']]
     if not buttons:
         return
+    through = max(item['through'], store.jobs.count_documents({'subscription': sub['_id'], 'status': 'sent'}))
     claimed = store.db.outbox.update_one({'_id': item['_id'], 'status': 'pending'},
-        {'$set': {'status': 'sending'}, '$inc': {'attempts': 1}})
+        {'$set': {'status': 'sending', 'through': through}, '$inc': {'attempts': 1}})
     if not claimed.modified_count:
         return
     try:
@@ -51,7 +56,7 @@ def deliver_one(store, telegram):
         if exc.retry_after:
             store.db.runtime.update_one({'_id': 'telegram'}, {'$max': {'not_before': now() + timedelta(seconds=exc.retry_after + 5)}}, upsert=True)
         store.db.outbox.update_one({'_id': item['_id']}, {'$set': {
-            'status': 'pending' if item['attempts'] < 4 else 'failed',
+            'status': 'pending' if exc.code in (408, 429) or item['attempts'] < 4 else 'failed',
             'retry_at': now() + timedelta(seconds=max(60, exc.retry_after + 5)), 'error': str(exc)}})
         return
     except Exception as exc:
@@ -59,7 +64,8 @@ def deliver_one(store, telegram):
         return
     store.db.outbox.update_one({'_id': item['_id']}, {'$set': {'status': 'sent',
         'message_id': result['message_id'], 'sent_at': now()}})
-    store.subs.update_one({'_id': item['subscription']}, {'$max': {'promotion_anchor': item['through']}})
+    store.subs.update_one({'_id': item['subscription']}, {'$max': {'promotion_anchor': through}})
+    store.event('recommendation_sent', item['subscription'], message_id=result['message_id'])
 
 
 def recover(store):

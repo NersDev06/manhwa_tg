@@ -94,6 +94,7 @@ type State = {
     stage: string;
     host?: string;
     chapter_delay?: number;
+    poll_seconds?: number;
     title?: string;
     chapter?: string;
     page?: number;
@@ -369,6 +370,12 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
                 ? `Basic · пауза ${data.worker.chapter_delay || 10} сек.`
                 : "Heroku отключён"}
             </small>
+            {data?.worker?.poll_seconds && (
+              <small>
+                Проверка глав · каждые{" "}
+                {Math.round(data.worker.poll_seconds / 60)} мин.
+              </small>
+            )}
           </div>
           <button
             className="logout"
@@ -400,7 +407,7 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
           </div>
           <div className="header-right">
             <span className="live">
-              <i /> Обновление каждые 15 сек.
+              <i /> Показатели панели · каждые 15 сек.
             </span>
             <button
               className="theme-toggle"
@@ -1109,6 +1116,7 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
                         <strong>
                           {{
                             published: "Глава опубликована",
+                            recommendation_sent: "Рекомендация опубликована",
                             worker_started: "Воркер запущен",
                             worker_stopped: "Воркер остановлен",
                             paused: "Публикации приостановлены",

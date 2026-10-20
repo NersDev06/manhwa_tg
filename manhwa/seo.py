@@ -64,4 +64,4 @@ def navigator(meta, first_url=None):
     aliases = '\n\nДругие названия: ' + escape(', '.join(names)) if names else ''
     state = escape(meta.get('status') or 'уточняется')
     start = f'<a href="{escape(first_url, quote=True)}">📖 Читать с первой главы</a>' if first_url else '📖 #глава_1'
-    return f'<b>{title}</b>{en}{aliases}\n\nСтатус источника: {state}.\nПроверяем обновления каждые 30 минут.\n\n{start}'
+    return f'<b>{title}</b>{en}{aliases}\n\nСтатус источника: {state}.\nПроверяем новые главы раз в час.\n\n{start}'
