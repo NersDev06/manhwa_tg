@@ -22,46 +22,84 @@ def usernames(meta):
     return result
 
 
+def public_metadata(meta, subscription):
+    import json
+    from pathlib import Path
+    result = dict(meta)
+    rows = json.loads((Path(__file__).resolve().parents[1] / 'config/editorial.json').read_text())
+    entry = next((row for row in rows if row['subscription'] == subscription), None)
+    if entry:
+        result.update(catalog_url='https://manhwa-frame.vercel.app/catalog/' + entry['slug'],
+                      summary=entry['description'], genres=entry['genres'])
+        if entry.get('english'):
+            result['alt_titles_other'] = list(dict.fromkeys([meta.get('title_en', '')] + meta.get('alt_titles_other', [])))
+            result['title_en'] = entry['english']
+    return result
+
+
 def channel_title(meta):
     title = meta['main_title_ru']
-    for tail in [' | Читать манхву', ' | Манхва', '']:
-        if len(title + tail) <= 65:
-            return title + tail
-    return title[:128]
+    suffix = ' | Манхва PDF'
+    return title + suffix if len(title + suffix) <= 128 else title[:128]
 
 
 def bio(meta):
-    # The Bot API currently permits longer descriptions, but keep the user's 250 cap.
     title = meta['main_title_ru']
-    en = f" ({meta['title_en']})" if meta.get('title_en') else ''
-    base = f'Читать манхву {title}{en} на русском. Главы в PDF, обновления автоматически.'
-    if len(base) > 250:
-        base = f'Читать манхву {title} на русском. Главы в PDF.'
-    if len(base) > 250:
-        base = ' '.join(base[:250].split(' ')[:-1])
-    for alias in meta.get('alt_titles_ru', []):
-        addition = (' Другие названия: ' if 'Другие названия:' not in base else ', ') + alias
-        if len(base + addition) <= 250:
-            base += addition
-    return base
+    catalog = meta.get('catalog_url')
+    footer = (' Оглавление: ' + catalog) if catalog else ''
+    prefix = 'Манхва «' + title + '» на русском. Главы в PDF.'
+    available = 250 - len(footer)
+    if len(prefix) > available:
+        prefix = title[:max(1, available - 22)].rstrip() + ' — манхва на русском.'
+    english = meta.get('title_en', '')
+    if english and len(prefix + ' ' + english + '.' + footer) <= 250:
+        prefix += ' ' + english + '.'
+    for alias in meta.get('alt_titles_ru', [])[:2]:
+        addition = ' Также: ' + alias + '.'
+        if len(prefix + addition + footer) <= 250:
+            prefix += addition
+    return (prefix + footer)[:250]
 
 
 def chapter_caption(meta, number, part=''):
     title = meta['main_title_ru']
-    tag = re.sub(r'[^\w]', '_', str(number))
-    lead = f'📖 {title} — Глава {number}{part}\n#глава_{tag}'
-    names = list(dict.fromkeys([title] + meta.get('alt_titles_ru', [])[:1] + [meta.get('title_en', '')]))
-    search = f"Читать манхву {' / '.join(n for n in names if n)} — глава {number} на русском"
-    if len(lead + search) < 950:
-        return escape(lead) + '\n\n<tg-spoiler>' + escape(search) + '</tg-spoiler>'
-    return escape(lead[:900])
+    chapter_tag = re.sub(r'[^\w]', '_', str(number))
+    title_tag = re.sub(r'[\W_]+', '_', title.lower()).strip('_')[:60]
+    lead = f'📖 {title} — Глава {number}{part}'
+    english = meta.get('title_en', '')
+    if english and len(lead + english) < 700:
+        lead += '\n' + english
+    return escape(lead[:800]) + f'\n\nPDF · на русском\n#манхва #{title_tag} #глава_{chapter_tag}'
 
 
-def navigator(meta, first_url=None):
-    names = list(dict.fromkeys(meta.get('alt_titles_ru', []) + meta.get('alt_titles_other', [])))
+def navigator(meta, first_url=None, chapters=None, channel_url=None):
     title = escape(meta['main_title_ru'])
-    en = '\n<i>' + escape(meta['title_en']) + '</i>' if meta.get('title_en') else ''
-    aliases = '\n\nДругие названия: ' + escape(', '.join(names)) if names else ''
-    state = escape(meta.get('status') or 'уточняется')
-    start = f'<a href="{escape(first_url, quote=True)}">📖 Читать с первой главы</a>' if first_url else '📖 #глава_1'
-    return f'<b>{title}</b>{en}{aliases}\n\nСтатус источника: {state}.\nПроверяем новые главы раз в час.\n\n{start}'
+    aliases = list(dict.fromkeys(meta.get('alt_titles_ru', [])[:2] + [meta.get('title_en', '')]))
+    aliases = [n for n in aliases if n and n.casefold() != meta['main_title_ru'].casefold()]
+    lines = ['<b>' + title + '</b>', 'Манхва на русском · PDF']
+    if meta.get('summary'):
+        lines += ['', escape(meta['summary'])]
+    if aliases:
+        lines += ['', 'Также: ' + escape(' · '.join(aliases))]
+    if meta.get('genres'):
+        lines += ['Жанры: ' + escape(', '.join(meta['genres']))]
+    lines += ['', 'Новые главы проверяем раз в час.']
+    if chapters:
+        last = chapters[-1]
+        last_url = channel_url.rstrip('/') + '/' + str(last['sent_parts'][0]['message_id'])
+        lines += [f"В канале: {len(chapters)} глав.", '',
+                  '<a href="' + escape(first_url, quote=True) + '">📖 Читать с начала</a>',
+                  '<a href="' + escape(last_url, quote=True) + '">↗ Последняя: глава ' + escape(str(last['number'])) + '</a>',
+                  '', '<b>Быстрые переходы</b>']
+        links = []
+        for offset in range(0, len(chapters), 50):
+            group = chapters[offset:offset + 50]
+            target = channel_url.rstrip('/') + '/' + str(group[0]['sent_parts'][0]['message_id'])
+            label = str(group[0]['number']) + '–' + str(group[-1]['number'])
+            links.append('<a href="' + escape(target, quote=True) + '">' + escape(label) + '</a>')
+        lines += [' · '.join(links[i:i+3]) for i in range(0, len(links), 3)]
+    elif first_url:
+        lines += ['', '<a href="' + escape(first_url, quote=True) + '">📖 Читать с первой главы</a>']
+    if meta.get('catalog_url'):
+        lines += ['', '<a href="' + escape(meta['catalog_url'], quote=True) + '">📚 Все главы и подробное оглавление</a>']
+    return '\n'.join(lines)

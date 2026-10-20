@@ -8,7 +8,7 @@ from . import spool
 from .preview import from_cached_pages
 from .store import now
 from bson.decimal128 import Decimal128
-from .seo import chapter_caption
+from .seo import chapter_caption, public_metadata
 from . import promotions
 from .channel_setup import refresh_navigation
 from .telegram import DeliveryRejected, DeliveryUnknown
@@ -88,6 +88,7 @@ class Worker:
                         if meta['main_title_ru'] != sub['main_title_override']:
                             meta['alt_titles_ru'] = list(dict.fromkeys([meta['main_title_ru']] + meta['alt_titles_ru']))
                         meta['main_title_ru'] = sub['main_title_override']
+                    meta = public_metadata(meta, sub['_id'])
                     self.store.subs.update_one({'_id': sub['_id']}, {'$set': {'metadata': meta}})
                 log.info('Checked subscription %s: %s chapters', sub['_id'], len(chapters))
             except Exception as exc:

@@ -4,6 +4,7 @@ export const metadata: Metadata = {
   title: "FRAME — Manhwa Control",
   description: "Панель управления публикациями",
   robots: { index: false, follow: false },
+  icons: { icon: "/icon.svg" },
 };
 export default function RootLayout({
   children,
