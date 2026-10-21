@@ -266,6 +266,7 @@ class Worker:
                     self.process(job)
                     self.stop.wait(self.chapter_delay)
                 else:
+                    self.state(stage='idle', job=None)
                     self.stop.wait(10)
         finally:
             self.stop.set()
