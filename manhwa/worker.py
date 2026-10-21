@@ -3,6 +3,7 @@ import os
 import re
 import signal
 import threading
+import time
 
 from . import spool
 from .preview import from_cached_pages
@@ -194,11 +195,28 @@ class Worker:
                 self.telegram.alert(self.admin, f"Нужна проверка главы {job['name']}: {status}. ID: {job['_id']}")
             log.warning('Job %s: %s (%s)', job['_id'], status, type(exc).__name__)
 
+    def acquire_lease(self, timeout=120):
+        # Heroku can start the replacement before the old dyno finishes stopping.
+        # Wait for its release/expiry; never override a live worker's ownership.
+        deadline = time.monotonic() + timeout
+        waiting = False
+        while not self.stop.is_set():
+            if self.store.acquire():
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError('Another worker still holds the lease')
+            if not waiting:
+                log.info('Waiting for previous worker to release its lease')
+                waiting = True
+            self.stop.wait(min(5, remaining))
+        return False
+
     def run(self):
-        if not self.store.acquire():
-            raise RuntimeError('Another worker holds the lease')
         for sig in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sig, lambda *_: self.stop.set())
+        if not self.acquire_lease():
+            return
         beat = threading.Thread(target=self.heartbeat, daemon=True)
         beat.start()
         try:

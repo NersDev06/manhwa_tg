@@ -1,6 +1,7 @@
 from unittest.mock import Mock
 from pathlib import Path
 import mongomock
+import pytest
 
 from manhwa.store import Store
 from manhwa.source import Chapter
@@ -159,3 +160,36 @@ def test_free_reaction_seeded_on_preview_and_document(monkeypatch, tmp_path):
     telegram.document.return_value = {'message_id': 123, 'file_id': 'test'}
     worker.process(job)
     assert store.jobs.find_one()['reaction_seeded'] == [122, 123]
+
+
+def test_restart_waits_for_previous_worker_without_stealing_lease(monkeypatch):
+    db = mongomock.MongoClient().db
+    previous, replacement = Store(db), Store(db)
+    assert previous.acquire()
+    worker = Worker(replacement, Mock(), Mock())
+    def finish_previous(_):
+        assert db.locks.find_one({'_id': 'worker'})['owner'] == previous.owner
+        previous.release()
+    monkeypatch.setattr(worker.stop, 'wait', finish_previous)
+    assert worker.acquire_lease()
+    assert db.locks.find_one({'_id': 'worker'})['owner'] == replacement.owner
+
+
+def test_startup_timeout_preserves_live_worker_lease(monkeypatch):
+    db = mongomock.MongoClient().db
+    previous, replacement = Store(db), Store(db)
+    assert previous.acquire()
+    worker = Worker(replacement, Mock(), Mock())
+    with pytest.raises(RuntimeError, match='still holds the lease'):
+        worker.acquire_lease(timeout=0)
+    assert db.locks.find_one({'_id': 'worker'})['owner'] == previous.owner
+
+
+def test_shutdown_during_lease_wait_does_not_acquire(monkeypatch):
+    store = Mock()
+    store.acquire.return_value = False
+    worker = Worker(store, Mock(), Mock())
+    monkeypatch.setattr(worker.stop, 'wait', lambda _: worker.stop.set())
+    assert worker.acquire_lease() is False
+    store.recover.assert_not_called()
+    store.release.assert_not_called()
