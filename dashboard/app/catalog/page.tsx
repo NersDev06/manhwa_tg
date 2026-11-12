@@ -18,6 +18,8 @@ import {
 export const revalidate = 300;
 export const metadata: Metadata = {
   title: { absolute: "Манхва на русском — каталог Telegram-каналов | FRAME" },
+  description: "Восемь произведений манхвы на русском языке с полными оглавлениями и прямыми ссылками на главы в Telegram. Фэнтези, экшен, романтика.",
+  keywords: ["манхва", "манхва на русском", "читать манхву", "telegram манхва", "корейские комиксы", "webtoon"],
   alternates: { canonical: CATALOG },
   openGraph: {
     title: "FRAME — найди свою следующую манхву",
@@ -26,9 +28,14 @@ export const metadata: Metadata = {
     url: CATALOG,
     type: "website",
     locale: "ru_RU",
-    images: [{ url: CATALOG + "/og/library", width: 1200, height: 630 }],
+    siteName: "FRAME",
+    images: [{ url: CATALOG + "/og/library", width: 1200, height: 630, alt: "Каталог манхвы FRAME" }],
   },
-  twitter: { card: "summary_large_image", images: [CATALOG + "/og/library"] },
+  twitter: { 
+    card: "summary_large_image", 
+    images: [CATALOG + "/og/library"],
+    site: "@manhwa_frame",
+  },
 };
 export default async function CatalogPage() {
   const books = await getBooks(),

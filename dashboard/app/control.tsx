@@ -26,6 +26,7 @@ import {
   Users,
   WifiOff,
 } from "lucide-react";
+import { getChannelIcon } from "@/lib/channel-icons";
 type Channel = {
   id: string;
   title: string;
@@ -777,8 +778,8 @@ export default function Control({ initialAuth }: { initialAuth: boolean }) {
                               <tr key={c.id}>
                                 <td>
                                   <div className="channel-name">
-                                    <span className={"tile tile-" + i}>
-                                      {c.title.charAt(0)}
+                                    <span className={"tile tile-" + i} title={getChannelIcon(c.title)}>
+                                      {getChannelIcon(c.title)}
                                     </span>
                                     <div>
                                       <strong>{c.title}</strong>

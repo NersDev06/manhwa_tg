@@ -29,9 +29,21 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const b = await getBook((await params).slug);
   if (!b) return { title: "Произведение не найдено", robots: { index: false } };
+  
+  const keywords = [
+    b.title,
+    b.english,
+    ...b.aliases.slice(0, 2),
+    ...b.genres,
+    "манхва",
+    "читать онлайн",
+    "на русском",
+  ];
+  
   return {
     title: `${b.title} — главы на русском`,
-    description: b.description + " Оглавление и Telegram-канал.",
+    description: `${b.description} ${b.chapters.length} глав опубликовано. Оглавление и Telegram-канал.`,
+    keywords,
     alternates: { canonical: CATALOG + "/" + b.slug },
     openGraph: {
       title: b.title + " — FRAME",
@@ -39,11 +51,18 @@ export async function generateMetadata({
       url: CATALOG + "/" + b.slug,
       type: "website",
       locale: "ru_RU",
-      images: [{ url: CATALOG + "/og/" + b.slug, width: 1200, height: 630 }],
+      siteName: "FRAME",
+      images: [{ 
+        url: CATALOG + "/og/" + b.slug, 
+        width: 1200, 
+        height: 630,
+        alt: `Обложка «${b.title}»`
+      }],
     },
     twitter: {
       card: "summary_large_image",
       images: [CATALOG + "/og/" + b.slug],
+      site: "@manhwa_frame",
     },
   };
 }

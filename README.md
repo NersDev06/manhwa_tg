@@ -12,54 +12,184 @@
 
 ## Локальная установка
 
-Требуется Python 3.13+.
+### Требования
+
+- Python 3.13+ (установлен через pyenv или Homebrew)
+- MongoDB Atlas (бесплатный M0 кластер)
+- Telegram Bot Token от @BotFather
+- Git для клонирования репозитория
+
+### Шаг 1: Клонирование и настройка окружения
 
 ```sh
+# Клонировать репозиторий
+git clone https://github.com/nersfullstack-1846/manhwa-telegram.git
+cd manhwa-telegram
+
+# Создать виртуальное окружение Python
 python3 -m venv .venv
+
+# Активировать окружение
+source .venv/bin/activate  # macOS/Linux
+# или .venv\Scripts\activate  # Windows
+
+# Установить зависимости
 .venv/bin/pip install -r requirements.txt
+```
+
+### Шаг 2: Настройка переменных окружения
+
+```sh
+# Скопировать пример конфигурации
 cp .env.example .env
+
+# Установить права доступа (только для владельца)
 chmod 600 .env
 ```
 
-Заполнить `MONGODB_URI` и `TELEGRAM_BOT_TOKEN` в `.env`. Не добавлять его в Git.
-Если файл уже существует, не перезаписывать. MongoDB: отдельный M0 и пользователь
-с `readWrite` только для базы `manhwa_telegram`. Использовать TLS и ограниченный
-сетевой доступ. Не включать автоматическую выдачу административных прав.
+Заполнить `.env` следующими данными:
 
-## Проверка источника и PDF без базы
+```env
+# MongoDB Atlas - создать бесплатный M0 кластер на https://www.mongodb.com/cloud/atlas
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority
+MONGODB_DATABASE=manhwa_telegram
+
+# Telegram Bot Token - получить у @BotFather в Telegram
+TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+
+# Опционально: ID личного чата для уведомлений (сначала /start боту)
+ADMIN_CHAT_ID=
+
+# Интервал проверки источников (в секундах, по умолчанию 1 час)
+POLL_SECONDS=3600
+
+# Лимит глав в сутки на канал (0 = без лимита)
+DAILY_CHAPTER_LIMIT=0
+
+# Задержка между главами (секунды)
+CHAPTER_DELAY_SECONDS=10
+```
+
+**Важно**: Не добавлять `.env` в Git! Он уже в `.gitignore`.
+
+### Шаг 3: Настройка MongoDB Atlas
+
+1. Зарегистрироваться на https://www.mongodb.com/cloud/atlas
+2. Создать бесплатный M0 кластер (512MB, достаточно для проекта)
+3. Настроить Network Access: добавить свой IP или `0.0.0.0/0` для доступа отовсюду
+4. Создать пользователя Database Access:
+   - Username: `manhwa_worker`
+   - Password: сгенерировать надёжный пароль
+   - Database User Privileges: `readWrite` только для `manhwa_telegram`
+5. Скопировать Connection String в `MONGODB_URI` (заменить `<password>`)
+
+### Шаг 4: Создание Telegram-бота
+
+1. Открыть [@BotFather](https://t.me/BotFather) в Telegram
+2. Отправить `/newbot`
+3. Указать имя бота (например: "Manhwa Publisher Bot")
+4. Указать username (должен заканчиваться на `bot`, например: `manhwa_publisher_bot`)
+5. Скопировать полученный токен в `TELEGRAM_BOT_TOKEN`
+
+### Шаг 5: Инициализация базы данных
 
 ```sh
+# Проверить подключение к MongoDB и создать индексы
+.venv/bin/python -m manhwa init-db
+```
+
+Успешный вывод: `MongoDB connected; indexes ready`
+
+### Шаг 6: Проверка работы без базы данных
+
+Можно проверить источники и генерацию PDF без MongoDB:
+
+```sh
+# Поиск манхвы по названию
 .venv/bin/python -m manhwa search 'Начало после конца'
+
+# Получить список глав тайтла
 .venv/bin/python -m manhwa chapters 'https://manga-shi.org/manga/the-beginning-after-the-end/'
+
+# Создать PDF-превью главы локально (не отправляется в Telegram)
 .venv/bin/python -m manhwa preview 'https://manga-shi.org/manga/the-beginning-after-the-end/tom-1/glava-1/'
 ```
 
-`preview` создаёт PDF локально и ничего не отправляет. Изображения преобразуются
-по одному в отдельных короткоживущих процессах; одновременно работает только один
-конвертер. Каждое исходное изображение становится отдельной длинной страницей
-PDF в исходных пропорциях: рисунки и реплики не разрезаются. Для чтения удобно
-использовать прокрутку по ширине страницы. GIF обрабатывается как первый кадр.
-Изображение более 32 млн пикселей или файл более 30 МБ вызывает ошибку,
-а не публикацию неполной главы. Обычная глава отправляется одним PDF. Только большие главы делятся с безопасным потолком 49 МБ на файл (Bot API допускает до 50 МБ).
+Команда `preview` создаёт PDF локально в `output/pdf/` и ничего не отправляет. 
+
+**Особенности PDF-генерации:**
+- Каждая страница = одно изображение без обрезки (сохраняются исходные пропорции)
+- Изображения обрабатываются по одному в отдельных процессах
+- GIF берётся только первый кадр
+- Лимиты: макс 32 млн пикселей или 30 МБ на изображение
+- Большие главы автоматически делятся на части по 49 МБ (лимит Telegram Bot API: 50 МБ)
+
+### Шаг 7: Подключение первого канала
+
+```sh
+# Создать Telegram-канал через приложение Telegram
+# Добавить бота администратором с правом публикации (Post Messages)
+
+# Проверить доступ бота к каналу
+.venv/bin/python -m manhwa check-channel '@your_channel_username'
+
+# Добавить подписку на тайтл
+.venv/bin/python -m manhwa add \
+  --url 'https://manga-shi.org/manga/solo-leveling/' \
+  --channel '@your_channel_username' \
+  --mode new
+
+# Режимы:
+# new - фиксирует существующие главы, публикует только новые
+# archive --start N - публикует с главы N (для загрузки архива)
+```
+
+### Шаг 8: Запуск воркера
+
+```sh
+# Запустить воркер публикаций (работает в foreground)
+.venv/bin/python -m manhwa worker
+
+# Для фоновой работы использовать nohup или tmux:
+nohup .venv/bin/python -m manhwa worker > worker.log 2>&1 &
+
+# Или tmux (рекомендуется):
+tmux new-session -d -s manhwa '.venv/bin/python -m manhwa worker'
+tmux attach -t manhwa  # подключиться
+# Ctrl+B, D - отключиться без остановки
+```
+
+### Управление воркером
+
+```sh
+# Проверить состояние всех подписок и очереди
+.venv/bin/python -m manhwa status
+
+# Приостановить публикации канала
+.venv/bin/python -m manhwa pause SUBSCRIPTION_ID
+
+# Возобновить публикации
+.venv/bin/python -m manhwa resume SUBSCRIPTION_ID
+```
 
 ## Подключение канала
 
-Добавить бота администратором с правом публикации, затем:
+См. **Шаг 7** в разделе "Локальная установка" выше.
+
+Краткая справка по режимам:
 
 ```sh
-.venv/bin/python -m manhwa check-channel '@channel_name'
-.venv/bin/python -m manhwa init-db
-.venv/bin/python -m manhwa add --url 'https://manga-shi.org/manga/title/' --channel '@channel_name' --mode new
-.venv/bin/python -m manhwa worker
+# Режим new: фиксирует существующие главы без публикации
+.venv/bin/python -m manhwa add --url 'MANGA_URL' --channel '@channel' --mode new
+
+# Режим archive: публикует начиная с указанной главы
+.venv/bin/python -m manhwa add --url 'MANGA_URL' --channel '@channel' --mode archive --start 1
 ```
 
-В режиме `new` первый успешный опрос фиксирует существующие главы без публикации;
-публикуются только появившиеся при следующих опросах. Чтобы начать с определённой
-главы, использовать `--mode archive --start 1`. Номер включительный и применяется
-ко всем томам. Архив публикуется последовательно, поэтому не включать его в
-публичном канале до проверки тестового канала.
+Номер `--start` применяется ко всем томам включительно. Архив публикуется последовательно — 
+всегда тестируйте на приватном канале перед публичным запуском.
 
-Пауза и состояние:
+Управление:
 
 ```sh
 .venv/bin/python -m manhwa status
